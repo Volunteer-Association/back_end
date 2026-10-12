@@ -93,6 +93,15 @@ export class UserEntity {
   isAllowMulti: number | null;
 
   @Column({
+    name: 'session_version',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+    comment: '会话版本，用于立即撤销旧 Access Token',
+  })
+  sessionVersion: number;
+
+  @Column({
     name: 'last_login_ip',
     type: 'varchar',
     length: 50,

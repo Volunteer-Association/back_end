@@ -35,7 +35,13 @@ export interface AuthSession {
 
 type SessionUser = Pick<
   UserEntity,
-  'userId' | 'username' | 'email' | 'nickname' | 'avatar' | 'role'
+  | 'userId'
+  | 'username'
+  | 'email'
+  | 'nickname'
+  | 'avatar'
+  | 'role'
+  | 'sessionVersion'
 >;
 
 @Injectable()
@@ -168,13 +174,20 @@ export class AuthService {
 
   async createSession(user: SessionUser): Promise<AuthSession> {
     const refreshToken = randomBytes(32).toString('base64url');
-    await this.refreshTokens.create(refreshToken, user.userId);
-    return this.sessionForToken(user, refreshToken);
+    const sessionVersion = await this.refreshTokens.create(
+      refreshToken,
+      user.userId,
+    );
+    if (sessionVersion === null) {
+      throw new UnauthorizedException('该账号当前不可登录');
+    }
+    return this.sessionForToken(user, refreshToken, sessionVersion);
   }
 
   private async sessionForToken(
     user: SessionUser,
     refreshToken: string,
+    sessionVersion = user.sessionVersion,
   ): Promise<AuthSession> {
     const accessToken = await this.jwtService.signAsync(
       {
@@ -182,6 +195,7 @@ export class AuthService {
         username: user.username,
         role: user.role,
         tokenType: 'access',
+        sessionVersion,
       },
       { expiresIn: ACCESS_TOKEN_TTL_SECONDS },
     );

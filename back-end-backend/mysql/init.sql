@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `pms_user` (
   `password` VARCHAR(255) NULL DEFAULT NULL COMMENT '密码哈希，第三方登录用户为空',
   `enable` TINYINT NOT NULL DEFAULT 0 COMMENT '账号状态：0正常、1锁定、2停用',
   `is_allow_multi` TINYINT NULL DEFAULT 0 COMMENT '是否允许多处同时登录：0不允许、1允许',
+  `session_version` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '会话版本，用于立即撤销旧 Access Token',
   `last_login_ip` VARCHAR(50) NULL DEFAULT NULL COMMENT '最后登录IP',
   `last_login_time` DATETIME NULL COMMENT '最后登录时间',
   `creater` VARCHAR(50) NOT NULL DEFAULT '系统' COMMENT '创建人',

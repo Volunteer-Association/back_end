@@ -27,6 +27,12 @@ export type AuthenticationUser = Pick<
   | 'avatar'
   | 'role'
   | 'status'
+  | 'sessionVersion'
+>;
+
+export type AuthenticationState = Pick<
+  UserEntity,
+  'status' | 'sessionVersion'
 >;
 
 @Injectable()
@@ -51,6 +57,13 @@ export class UsersRepository {
       .addSelect('user.password')
       .where('user.username = :username', { username })
       .getOne();
+  }
+
+  findAuthenticationState(userId: string): Promise<AuthenticationState | null> {
+    return this.repository.findOne({
+      select: { status: true, sessionVersion: true },
+      where: { userId },
+    });
   }
 
   /** 每次成功登录后更新最后登录时间和客户端 IP。 */

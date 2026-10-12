@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuthenticationUser,
+  AuthenticationState,
   EditableUserProfile,
   UserProfile,
   UsersRepository,
@@ -15,6 +16,12 @@ export class UsersService {
     username: string,
   ): Promise<AuthenticationUser | null> {
     return this.usersRepository.findByUsernameForAuthentication(username);
+  }
+
+  findAuthenticationState(
+    userId: string,
+  ): Promise<AuthenticationState | null> {
+    return this.usersRepository.findAuthenticationState(userId);
   }
 
   async updateLastLogin(

@@ -169,6 +169,8 @@ npm run start:dev
 
 数据库结构不会因 Entity 改动自动同步；TypeORM `synchronize` 在所有环境关闭。请通过显式 SQL 管理结构变更。`mysql/init.sql` 用于本地初始化，不会自动迁移已创建数据库。
 
+已初始化的数据库部署单设备会话失效功能前，需先执行一次 `back-end-backend/mysql/migrations/20261015_add_session_version.sql` 添加 `pms_user.session_version`。该迁移会清除升级前的 Refresh Token，用户需要重新登录；新数据库已由 `mysql/init.sql` 创建该字段。
+
 ### 2. 配置并启动前端
 
 在 `back-end-frontend` 目录复制 `.env.example` 为 `.env`。默认值适合后端监听 `3000` 的本地开发：

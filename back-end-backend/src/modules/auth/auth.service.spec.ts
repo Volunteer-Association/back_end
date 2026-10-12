@@ -18,6 +18,7 @@ describe('AuthService', () => {
     avatar: null,
     role: 'user',
     status: 'active',
+    sessionVersion: 0,
   } as UserEntity;
 
   const usersService = {
@@ -52,7 +53,7 @@ describe('AuthService', () => {
     });
     usersService.setLocalCredentials.mockResolvedValue(undefined);
     jwtService.signAsync.mockResolvedValue('signed-token');
-    refreshTokens.create.mockResolvedValue(undefined);
+    refreshTokens.create.mockResolvedValue(1);
     service = new AuthService(
       usersService as unknown as UsersService,
       jwtService as unknown as JwtService,
@@ -91,9 +92,19 @@ describe('AuthService', () => {
         username: 'sample',
         role: 'user',
         tokenType: 'access',
+        sessionVersion: 1,
       },
       { expiresIn: 900 },
     );
+  });
+
+  it('rejects session creation if the account became inactive', async () => {
+    refreshTokens.create.mockResolvedValue(null);
+
+    await expect(
+      service.createSession(user),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+    expect(jwtService.signAsync).not.toHaveBeenCalled();
   });
 
   it('rotates valid refresh tokens and rejects expired sessions', async () => {

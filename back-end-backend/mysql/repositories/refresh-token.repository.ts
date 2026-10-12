@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
 import { DataSource, LessThan } from 'typeorm';
-import { RefreshTokenEntity, UserEntity } from '../entities/index.js';
+import {
+  RefreshTokenEntity,
+  UserEntity,
+} from '../entities/index.js';
+import { mapEnabledStatus } from '../entities/user.entity.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from '../../config/auth.constants.js';
 
 @Injectable()
@@ -10,19 +14,44 @@ import { REFRESH_TOKEN_TTL_SECONDS } from '../../config/auth.constants.js';
 export class RefreshTokenRepository {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async create(token: string, userId: string): Promise<void> {
-    const tokens = this.dataSource.getRepository(RefreshTokenEntity);
-    const now = new Date();
-    await tokens.delete({ expiresAt: LessThan(now) });
-    await tokens.save(
-      tokens.create({
-        tokenHash: this.hash(token),
-        user: { userId },
-        expiresAt: new Date(
-          now.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000,
-        ),
-      }),
-    );
+  async create(token: string, userId: string): Promise<number | null> {
+    return this.dataSource.transaction(async (manager) => {
+      const users = manager.getRepository(UserEntity);
+      const user = await users
+        .createQueryBuilder('user')
+        .where('user.userId = :userId', { userId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!user || mapEnabledStatus(user.status) !== 'active') return null;
+
+      const tokens = manager.getRepository(RefreshTokenEntity);
+      const now = new Date();
+      await tokens.delete({ expiresAt: LessThan(now) });
+
+      if (Number(user.isAllowMulti) !== 1) {
+        user.sessionVersion += 1;
+        await users.update(
+          { userId },
+          { sessionVersion: user.sessionVersion },
+        );
+        await tokens
+          .createQueryBuilder()
+          .delete()
+          .where('user_id = :userId', { userId })
+          .execute();
+      }
+
+      await tokens.save(
+        tokens.create({
+          tokenHash: this.hash(token),
+          user: { userId },
+          expiresAt: new Date(
+            now.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000,
+          ),
+        }),
+      );
+      return user.sessionVersion;
+    });
   }
 
   async rotate(
