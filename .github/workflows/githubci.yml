@@ -1,0 +1,90 @@
+# 这是一个基本的工作流程，可以帮助您开始使用操作
+name: CI CD
+# 控制工作流何时运行
+on:
+  # 触发推送或拉出请求事件的工作流程，但仅适用于主分支
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  # 允许您在“操作”选项卡中手动运行此工作流程
+  workflow_dispatch:
+# 工作流运行由一个或多个可以按顺序或并行运行的作业组成
+jobs:
+  # 此工作流包含一个名为“initialization”的单个作业
+  initialization:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install
+        run: cd ./back-end-frontend/ && npm install
+      - name: build
+        run: cd ./back-end-frontend/ && npm run build
+      # 部署远程服务器
+      - name: ssh scp ssh pipelines
+        uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+        env:
+          WELCOME: "ssh scp ssh pipelines"
+          LASTSSH: "Doing something after copying"
+        with:
+          host: ${{ secrets.USER_HOST }} # 服务器的ip
+          user: ${{ secrets.USER_NAME }} # 服务器的账号
+          pass: ${{ secrets.LDD_SERVER_PASSWORD }} # 服务器的密码
+          connect_timeout: 10s
+          # 这部分是在服务器上，传输文件前执行的命令，关闭并删除运行中的旧版本
+          first_ssh: |
+            sudo rm -rf /home/lenovo/dist
+            sudo rm -rf /opt/frontend
+          scp: ./back-end-frontend/dist => /home/lenovo
+          # 这部分是在服务器上，传输文件后执行的命令，新版本重新安装依赖并运行
+          last_ssh: |
+            sudo cp -r /home/lenovo/dist /opt/frontend
+            sudo service nginx stop
+            sudo service nginx start
+  # 此工作流包含一个名为“build”的单个作业
+  build:
+    # 工作将运行的跑步者的类型
+    runs-on: ubuntu-latest
+    # 步骤表示将作为作业的一部分执行的一系列任务
+    steps:
+      # 在$ github_workspace下检查存储库，因此您的作业可以访问它
+      - uses: actions/checkout@v3
+      # 项目构建
+      - name: install
+        run: cd ./back-end-backend/ && npm install pkg yarn -g && yarn install
+      - name: build
+        run: cd ./back-end-backend/ && npm run build
+      - name: build:pkg
+        run: cd ./back-end-backend/ && npm run build:pkg
+      # 部署远程服务器
+      - name: ssh scp ssh pipelines
+        uses: cross-the-world/ssh-scp-ssh-pipelines@latest
+        env:
+          WELCOME: "ssh scp ssh pipelines"
+          LASTSSH: "Doing something after copying"
+        with:
+          host: ${{ secrets.USER_HOST }} # 服务器的ip
+          user: ${{ secrets.USER_NAME }} # 服务器的账号
+          pass: ${{ secrets.LDD_SERVER_PASSWORD }} # 服务器的密码
+          #key: ${{ secrets.USER_KEY }} #服务器的密钥
+          connect_timeout: 10s
+          #first_ssh: | #这部分是在服务器上，传输文件前执行的命令，关闭并删除运行中的旧版本
+          #sudo rm -rf /home/ubuntu/website
+          #cd /project/ldd-rms-backend
+          #rm -rf dist
+          first_ssh:
+            | #这部分是在服务器上，传输文件前执行的命令，关闭并删除运行中的旧版本
+            sudo rm -rf /home/lenovo/server
+          scp: |
+            ./back-end-backend/pkg => /home/lenovo/server
+            ./back-end-backend/bin => /home/lenovo/server
+          # last_ssh: | #这部分是在服务器上，传输文件后执行的命令，新版本重新安装依赖并运行
+          # cd /project/ldd-rms-backend
+          # yarn
+          # pm2 start ./dist/main.js
+          last_ssh: |
+            mv /home/lenovo/server/pkg/back-end-backend /home/lenovo/server/backEnd
+            sudo rm -rf /home/lenovo/server/pkg
+            chmod 754 /home/lenovo/server/backEnd
+            sudo service nginx stop
+            sudo service nginx start

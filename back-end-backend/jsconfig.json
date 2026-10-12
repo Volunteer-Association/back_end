@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "target": "ESNext",
+    "module": "ESNext",
+    "jsx": "react",
+    "moduleResolution": "bundler",
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+    "types": ["jest", "node"],
+    "incremental": true,
+    "skipLibCheck": true,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "paths": {
+      "@/*": ["./src/*", "./config/*", "./mysql/*"]
+    }
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./test/**/*.ts",
+    "./config/**/*.ts",
+    "./mysql/**/*.ts"
+  ],
+  "exclude": ["./node_modules", "./**/node_modules/*"]
+}

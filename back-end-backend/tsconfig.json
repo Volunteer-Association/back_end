@@ -1,0 +1,51 @@
+{
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": ".",
+    "target": "ESNext",
+    "module": "nodenext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "isolatedModules": true,
+    "allowSyntheticDefaultImports": true,
+    "types": [
+      "jest",
+      "node"
+    ],
+    "sourceMap": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "strictNullChecks": false,
+    "useUnknownInCatchVariables": false,
+    "noImplicitAny": false,
+    "strictBindCallApply": false,
+    "forceConsistentCasingInFileNames": false,
+    "noFallthroughCasesInSwitch": false,
+    "paths": {
+      "@/*": [
+        "./src/*",
+        "./config/*",
+        "./mysql/*"
+      ]
+    }
+  },
+  "include": [
+    "./src/**/*.ts",
+    "./test/**/*.ts",
+    "./config/**/*.ts",
+    "./mysql/**/*.ts"
+  ],
+  "exclude": [
+    "./node_modules",
+    "./test",
+    "./dist",
+    "./**/*spec.ts"
+  ]
+}

@@ -1,0 +1,7 @@
+export { http, request } from './client'
+export * from './modules/auth'
+export * from './modules/audio'
+export * from './modules/crud'
+export * from './modules/demo'
+export * from './modules/system'
+export * from './modules/upload'

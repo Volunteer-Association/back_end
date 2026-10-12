@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Document</title>
+</head>
+
+<body>
+  <header>
+    文档对象模型
+    <h1>DOM 获取JavaScript</h1>
+  </header>
+  <script>
+    function CalculateByteConversion(num, Bytecodes = 'mb') {
+      const byteMap = {
+        kb: 1024,
+        mb: 1024 * 1024,
+        gb: 1024 * 1024 * 1024,
+        KB: 1024,
+        MB: 1024 * 1024,
+        GB: 1024 * 1024 * 1024,
+      };
+      const byte = byteMap[Bytecodes];
+      if (!byte) {
+        return 'wrong Bytecodes(未知的字节码): ' + Bytecodes;
+        throw new Error(`wrong Bytecodes(未知的字节码): ${Bytecodes}`);
+      }
+      if (num < 0) {
+        return '字节数不能为负数';
+        throw new Error(`wrong num(字节数不能为负数): ${num}`);
+      }
+      return Math.round((num / byte) * 100) / 100;
+    }
+    const memory = performance.memory;
+    console.log(
+      ' memory.jsHeapSizeLimit',
+      CalculateByteConversion(memory.jsHeapSizeLimit, 'gb'),
+      'GB',
+    );
+    console.log(
+      ' memory.totalJSHeapSize',
+      CalculateByteConversion(memory.totalJSHeapSize, 'mb'),
+      'MB',
+    );
+    console.log(
+      ' memory.usedJSHeapSize',
+      CalculateByteConversion(memory.usedJSHeapSize, 'mb'),
+      'MB',
+    );
+  </script>
+</body>
+
+</html>
