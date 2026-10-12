@@ -72,6 +72,17 @@ export function logoutSession() {
   })
 }
 
+export function getPasswordStatus() {
+  return request.get<{ hasLocalPassword: boolean }>('/auth/password')
+}
+
+export function setLocalPassword(data: {
+  currentPassword?: string
+  newPassword: string
+}) {
+  return request.post<{ message: string }>('/auth/password', data)
+}
+
 export function getLinkedOAuthProviders() {
   return request.get<OAuthProvider[]>('/auth/oauth-links')
 }

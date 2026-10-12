@@ -165,7 +165,7 @@ describe('RegistrationService', () => {
       email: 'PERSON@example.com',
       password: 'correct-horse-battery',
       emailCode: CODE,
-    });
+    }, '203.0.113.10');
 
     expect(session).toEqual({ data: { accessToken: 'token' } });
     expect(dataSource.transaction).toHaveBeenCalledTimes(1);
@@ -175,6 +175,8 @@ describe('RegistrationService', () => {
         username: 'person',
         status: 'active',
         roles: [{ id: 1, key: 'user' }],
+        lastLoginIp: '203.0.113.10',
+        lastLoginAt: expect.any(Date),
       }),
     );
     const createdUser = userRepository.create.mock.results[0]?.value as {
@@ -184,6 +186,7 @@ describe('RegistrationService', () => {
     expect(profileRepository.create).toHaveBeenCalledWith({
       userId: '1234567890123456789',
       email: 'person@example.com',
+      nickname: 'person',
     });
     expect(verificationRepository.delete).toHaveBeenCalledWith({ id: 1 });
     expect(authService.createSession).toHaveBeenCalledTimes(1);

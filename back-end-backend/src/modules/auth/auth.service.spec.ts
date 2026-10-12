@@ -23,6 +23,8 @@ describe('AuthService', () => {
   const usersService = {
     findByUsernameForAuthentication: jest.fn(),
     updateLastLogin: jest.fn(),
+    findPasswordHash: jest.fn(),
+    setPassword: jest.fn(),
   };
   const jwtService = {
     signAsync: jest.fn(),
@@ -44,6 +46,8 @@ describe('AuthService', () => {
       password: passwordHash,
     });
     usersService.updateLastLogin.mockResolvedValue(undefined);
+    usersService.findPasswordHash.mockResolvedValue(null);
+    usersService.setPassword.mockResolvedValue(undefined);
     jwtService.signAsync.mockResolvedValue('signed-token');
     refreshTokens.create.mockResolvedValue(undefined);
     service = new AuthService(
@@ -54,7 +58,11 @@ describe('AuthService', () => {
   });
 
   it('verifies the database password and issues short and long-lived tokens', async () => {
-    const response = await service.login('sample', 'correct-password');
+    const response = await service.login(
+      'sample',
+      'correct-password',
+      '203.0.113.10',
+    );
 
     expect(response.data.accessToken).toBe('signed-token');
     expect(response.refreshToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -72,6 +80,7 @@ describe('AuthService', () => {
     });
     expect(usersService.updateLastLogin).toHaveBeenCalledWith(
       expect.objectContaining({ userId: '1234567890123456789' }),
+      '203.0.113.10',
     );
     expect(jwtService.signAsync).toHaveBeenCalledWith(
       {
@@ -133,5 +142,41 @@ describe('AuthService', () => {
       service.login('unknown', 'correct-password'),
     ).rejects.toBeInstanceOf(UnauthorizedException);
     expect(jwtService.signAsync).not.toHaveBeenCalled();
+  });
+
+  it('sets a local password for an OAuth-only account', async () => {
+    await service.setLocalPassword(
+      '1234567890123456789',
+      undefined,
+      'new-local-password',
+    );
+
+    expect(usersService.setPassword).toHaveBeenCalledWith(
+      '1234567890123456789',
+      expect.any(String),
+    );
+    const savedHash = usersService.setPassword.mock.calls[0]?.[1] as string;
+    expect(savedHash).not.toBe('new-local-password');
+    await expect(
+      bcrypt.compare('new-local-password', savedHash),
+    ).resolves.toBe(true);
+    usersService.findPasswordHash.mockResolvedValue(savedHash);
+    await expect(service.hasLocalPassword('1234567890123456789')).resolves.toBe(
+      true,
+    );
+  });
+
+  it('requires the current local password before changing it', async () => {
+    usersService.findPasswordHash.mockResolvedValue(passwordHash);
+
+    await expect(
+      service.setLocalPassword(
+        '1234567890123456789',
+        'wrong-password',
+        'new-local-password',
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(usersService.setPassword).not.toHaveBeenCalled();
   });
 });

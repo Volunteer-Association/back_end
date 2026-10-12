@@ -122,7 +122,7 @@ export class RegistrationService {
     email: string;
     password: string;
     emailCode: string;
-  }) {
+  }, ipAddress?: string) {
     const username = input.username.trim();
     const email = input.email.trim().toLowerCase();
     let result: RegistrationResult;
@@ -178,12 +178,15 @@ export class RegistrationService {
           username,
           password: await hash(input.password, 12),
           status: 'active',
+          lastLoginIp: ipAddress?.slice(0, 50) ?? null,
+          lastLoginAt: new Date(),
           roles: [userRole],
         });
         const savedUser = await users.save(user);
         const profile = profiles.create({
           userId: savedUser.userId,
           email,
+          nickname: username,
         });
         await profiles.save(profile);
         savedUser.profile = profile;

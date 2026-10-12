@@ -73,6 +73,7 @@ describe('OAuthService', () => {
     );
 
     expect(url.origin).toBe('https://gitee.com');
+    expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('client_id')).toBe('gitee-client-id');
     expect(url.searchParams.get('redirect_uri')).toBe(
       providerConfig.gitee.callbackUrl,
@@ -116,11 +117,22 @@ describe('OAuthService', () => {
       ),
     ).resolves.toEqual({ type: 'login', code: 'one-time-login-code' });
 
-    const tokenRequest = fetchMock.mock.calls[0][1];
-    expect(String(tokenRequest?.body)).toContain(
-      'client_secret=gitee-client-secret',
+    const tokenRequestUrl = new URL(String(fetchMock.mock.calls[0][0]));
+    expect(tokenRequestUrl.origin).toBe('https://gitee.com');
+    expect(tokenRequestUrl.pathname).toBe('/oauth/token');
+    expect(tokenRequestUrl.searchParams.get('grant_type')).toBe(
+      'authorization_code',
     );
-    expect(String(fetchMock.mock.calls[0][0])).not.toContain('client_secret');
+    expect(tokenRequestUrl.searchParams.get('code')).toBe('authorization-code');
+    expect(tokenRequestUrl.searchParams.get('client_id')).toBe('gitee-client-id');
+    expect(tokenRequestUrl.searchParams.get('client_secret')).toBe(
+      'gitee-client-secret',
+    );
+    expect(tokenRequestUrl.searchParams.get('redirect_uri')).toBe(
+      providerConfig.gitee.callbackUrl,
+    );
+    expect(fetchMock.mock.calls[0][1]?.method).toBe('POST');
+    expect(fetchMock.mock.calls[0][1]?.body).toBeUndefined();
     expect(oauthRepository.findOrCreateUser).toHaveBeenCalledWith(
       'gitee',
       expect.objectContaining({

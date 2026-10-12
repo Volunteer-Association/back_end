@@ -14,7 +14,18 @@ export class UsersService {
     return this.usersRepository.findByUsernameForAuthentication(username);
   }
 
-  async updateLastLogin(user: AuthenticationUser): Promise<void> {
-    await this.usersRepository.updateLastLogin(user.userId);
+  async updateLastLogin(
+    user: AuthenticationUser,
+    ipAddress?: string,
+  ): Promise<void> {
+    await this.usersRepository.updateLastLogin(user.userId, ipAddress);
+  }
+
+  findPasswordHash(userId: string): Promise<string | null> {
+    return this.usersRepository.findPasswordHash(userId);
+  }
+
+  setPassword(userId: string, passwordHash: string): Promise<void> {
+    return this.usersRepository.setPassword(userId, passwordHash);
   }
 }

@@ -3,7 +3,13 @@
     <el-card class="login-card" shadow="always">
       <div class="login-heading">
         <h1>{{ mode === 'login' ? '欢迎登录' : '创建账号' }}</h1>
-        <p>使用本地账号或第三方账号登录</p>
+        <p>
+          {{
+            mode === 'login'
+              ? '使用本地账号或第三方账号登录'
+              : '注册后将自动使用用户名作为默认昵称'
+          }}
+        </p>
       </div>
 
       <div class="auth-modes">
@@ -61,7 +67,7 @@
         label-position="top"
         @keyup.enter="submit"
       >
-        <el-form-item label="用户名" prop="username">
+        <el-form-item label="用户名（注册后作为默认昵称）" prop="username">
           <el-input
             v-model.trim="registerForm.username"
             autocomplete="username"

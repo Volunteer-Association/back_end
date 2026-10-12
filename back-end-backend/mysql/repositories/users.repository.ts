@@ -35,7 +35,29 @@ export class UsersRepository {
       .getOne();
   }
 
-  async updateLastLogin(userId: string): Promise<void> {
-    await this.repository.update({ userId }, { lastLoginAt: new Date() });
+  async updateLastLogin(
+    userId: string,
+    ipAddress?: string,
+  ): Promise<void> {
+    await this.repository.update(
+      { userId },
+      {
+        lastLoginAt: new Date(),
+        lastLoginIp: ipAddress?.slice(0, 50) ?? null,
+      },
+    );
+  }
+
+  async findPasswordHash(userId: string): Promise<string | null> {
+    const user = await this.repository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.userId = :userId', { userId })
+      .getOne();
+    return user?.password ?? null;
+  }
+
+  async setPassword(userId: string, passwordHash: string): Promise<void> {
+    await this.repository.update({ userId }, { password: passwordHash });
   }
 }

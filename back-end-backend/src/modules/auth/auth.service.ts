@@ -1,5 +1,6 @@
 import {
   Injectable,
+  BadRequestException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -40,7 +41,7 @@ export class AuthService {
     private readonly refreshTokens: RefreshTokenRepository,
   ) {}
 
-  async login(username: string, password: string) {
+  async login(username: string, password: string, ipAddress?: string) {
     const user = await this.usersService.findByUsernameForAuthentication(
       username,
     );
@@ -53,8 +54,35 @@ export class AuthService {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
-    await this.usersService.updateLastLogin(user);
+    await this.usersService.updateLastLogin(user, ipAddress);
     return this.createSession(user);
+  }
+
+  async hasLocalPassword(userId: string): Promise<boolean> {
+    return (await this.usersService.findPasswordHash(userId)) !== null;
+  }
+
+  async setLocalPassword(
+    userId: string,
+    currentPassword: string | undefined,
+    newPassword: string,
+  ): Promise<void> {
+    const currentHash = await this.usersService.findPasswordHash(userId);
+    if (currentHash) {
+      if (
+        !currentPassword ||
+        !(await bcrypt.compare(currentPassword, currentHash))
+      ) {
+        throw new UnauthorizedException('当前密码不正确');
+      }
+    } else if (currentPassword) {
+      throw new BadRequestException('该账号尚未设置本地密码');
+    }
+
+    await this.usersService.setPassword(
+      userId,
+      await bcrypt.hash(newPassword, 12),
+    );
   }
 
   async refreshSession(refreshToken: string) {

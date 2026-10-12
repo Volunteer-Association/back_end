@@ -141,7 +141,7 @@ npm run start:dev
 
 角色不存放在 `pms_user` 或 `users` 中。初始化时会创建 `user` 和 `admin` 两个基础角色；新注册/第三方登录用户默认获得 `user` 角色。首次管理员授权由数据库管理员按实际账号执行：`INSERT INTO user_roles (user_id, role_id) SELECT user_id, id FROM pms_user WHERE login_name = '实际账号' AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = pms_user.user_id AND r.role_key = 'admin');`。不要直接修改用户表中的角色字段。
 
-本地注册使用邮箱验证码：前端先调用 `POST /auth/register/email-code`，再调用 `POST /auth/register` 提交用户名、邮箱、密码和验证码。验证码有效期由 `EMAIL_EXPIRES`（毫秒）控制，默认 5 分钟；邮箱重发间隔由 `EMAIL_VERIFICATION_COOLDOWN`（秒）控制，默认 60 秒；最多允许错误尝试 5 次。数据库只保存验证码的 HMAC 摘要，注册成功后验证码在事务中消费，并自动创建 `pms_user`、`users` 和 `user_roles` 记录，随后直接登录。发码接口对已注册邮箱返回相同的通用提示以减少邮箱枚举。SMTP 配置使用 `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_SECURE`、`EMAIL_USER`、`EMAIL_PASS` 和可选 `EMAIL_FROM`；SMTP 凭据要么全部配置，要么全部留空。未配置时邮件验证码接口会明确报错，不影响已有登录功能。
+本地注册使用邮箱验证码：前端先调用 `POST /auth/register/email-code`，再调用 `POST /auth/register` 提交用户名、邮箱、密码和验证码。注册时会将用户名同步为用户详情表中的默认昵称；成功注册时 `pms_user.last_login_ip`、`last_login_time` 记录来源 IP 与登录时间，后续成功登录会更新这两个字段。审计日志也会记录登录/注册请求 IP。验证码有效期由 `EMAIL_EXPIRES`（毫秒）控制，默认 5 分钟；邮箱重发间隔由 `EMAIL_VERIFICATION_COOLDOWN`（秒）控制，默认 60 秒；最多允许错误尝试 5 次。数据库只保存验证码的 HMAC 摘要，注册成功后验证码在事务中消费，并自动创建 `pms_user`、`users` 和 `user_roles` 记录，随后直接登录。发码接口对已注册邮箱返回相同的通用提示以减少邮箱枚举。SMTP 配置使用 `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_SECURE`、`EMAIL_USER`、`EMAIL_PASS` 和可选 `EMAIL_FROM`；SMTP 凭据要么全部配置，要么全部留空。未配置时邮件验证码接口会明确报错，不影响已有登录功能。
 
 雪花 ID 使用 `SNOWFLAKE_WORKER_ID`（0–1023）区分节点；开发环境默认值为 `0`，生产环境必须显式配置。连接同一数据库的每个并行后端实例必须使用唯一节点号，否则无法保证跨进程 ID 唯一。生成的 ID 不会过期，作为账户标识可长期使用；雪花时间戳位有固定算法范围，当前纪元设置支持至约 2093 年。
 
@@ -150,6 +150,8 @@ npm run start:dev
 登录页只向后端发起 Gitee/GitHub 登录。后端负责生成授权地址、校验 OAuth `state`、使用服务端密钥交换授权码并获取第三方用户资料。浏览器只会收到短时、一次性的登录交换码；前端再向后端兑换本地登录凭证，JWT 不放在回调 URL 中。第三方访问令牌不会保存到本地数据库。
 
 首次直接使用某个第三方账号登录时，后端在 `pms_user` 创建认证账号，在 `users` 创建用户详情，并默认关联 `user` 角色；`oauth_identities` 保存唯一的“提供方 + 提供方用户 ID -> 本地用户”关系。后续同一第三方账号会登录到这个本地用户。已登录用户也可以从导航栏的“账号绑定”进入，主动将 Gitee 或 GitHub 关联到当前本地账号。不会仅凭邮箱自动合并，避免不安全的账号接管；若第三方身份已属于其他本地账号，绑定会被拒绝，用户应先登录原账号处理。OAuth 登录不授予管理员权限。
+
+第三方登录用户初始没有本地密码。登录后打开“账号绑定”页面可设置本地密码；已有密码的账号需提供当前密码才能修改。密码以 bcrypt 哈希保存，不会回传或记录明文；设置后可继续用本地登录账号（`pms_user.login_name`）及密码登录。相应接口为已登录用户专用的 `GET /auth/password`（查询是否已设置）和 `POST /auth/password`（设置/修改）。
 
 本地账号登录与第三方登录都会签发 **15 分钟 Access Token**，专用于业务 API；**7 天 Refresh Token** 仅通过 HttpOnly Cookie 传递，数据库只保存哈希。Access Token 到期后，前端自动请求刷新接口，服务端原子消费旧 Refresh Token 并签发新的一对凭证；Refresh Token 过期、撤销或无效时才需要重新登录。退出登录会撤销当前 Refresh Token。登录、刷新与注销请求启用浏览器凭据传递；生产环境 Cookie 设置为 `Secure; SameSite=None`，因此需要 HTTPS。跨源请求还要求后端 CORS 开启 credentials、`CORS_ORIGINS` 精确列出前端 Origin（协议、域名和端口必须一致，不能使用 `*`），刷新/注销接口也会拒绝缺少 Origin 或不在白名单内的请求。即使 CORS 和 Cookie 设置正确，浏览器隐私策略仍可能阻止完全跨站点的第三方 Cookie；生产部署建议使用同站点子域名或由反向代理统一入口。执行用户表拆分迁移后旧 Refresh Token 和数字型 JWT 不再有效，用户需要重新登录。请保护好 `JWT_SECRET`，更换该值会使所有未过期 Access Token 失效。
 

@@ -31,6 +31,7 @@ import { LoggingService } from '../logging/logging.service.js';
 import type { LogLevel } from '../../../mysql/entities/log.entity.js';
 import { SendRegistrationCodeDto } from './dto/send-registration-code.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
+import { SetPasswordDto } from './dto/set-password.dto.js';
 
 const OAUTH_PROVIDERS = ['gitee', 'github'] as const;
 const REFRESH_COOKIE = 'refresh_token';
@@ -97,7 +98,7 @@ export class AuthController {
     @Res() response: Response,
   ) {
     this.assertAllowedOrigin(request);
-    const session = await this.registrationService.register(dto);
+    const session = await this.registrationService.register(dto, request.ip);
     await this.audit(
       request,
       'info',
@@ -119,6 +120,7 @@ export class AuthController {
       session = await this.authService.login(
         loginDto.username,
         loginDto.password,
+        request.ip,
       );
     } catch (error: unknown) {
       await this.audit(request, 'warn', 'password_login_failed');
@@ -155,6 +157,31 @@ export class AuthController {
     await this.audit(request, 'info', 'logout');
     this.clearRefreshCookie(response);
     return response.status(204).send();
+  }
+
+  @Get('auth/password')
+  @UseGuards(AuthGuard)
+  async getPasswordStatus(
+    @Req() request: Request & { user?: unknown },
+  ) {
+    const userId = authenticatedUserId(request.user);
+    return { hasLocalPassword: await this.authService.hasLocalPassword(userId) };
+  }
+
+  @Post('auth/password')
+  @UseGuards(AuthGuard)
+  async setPassword(
+    @Body() dto: SetPasswordDto,
+    @Req() request: Request & { user?: unknown },
+  ) {
+    const userId = authenticatedUserId(request.user);
+    await this.authService.setLocalPassword(
+      userId,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+    await this.audit(request, 'info', 'local_password_updated', userId);
+    return { message: '本地密码设置成功' };
   }
 
   @Get('auth/oauth/providers')

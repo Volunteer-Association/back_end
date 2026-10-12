@@ -94,6 +94,9 @@ export class OAuthService {
       provider === 'gitee'
         ? new URL('https://gitee.com/oauth/authorize')
         : new URL('https://github.com/login/oauth/authorize');
+    if (provider === 'gitee') {
+      authorizationUrl.searchParams.set('response_type', 'code');
+    }
     authorizationUrl.searchParams.set('client_id', configuration.clientId);
     authorizationUrl.searchParams.set('redirect_uri', configuration.callbackUrl);
     authorizationUrl.searchParams.set('state', state);
@@ -176,24 +179,35 @@ export class OAuthService {
     code: string,
   ): Promise<OAuthProfile> {
     const configuration = this.requireProviderConfiguration(provider);
+    const tokenParameters = new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: configuration.clientId,
+      client_secret: configuration.clientSecret,
+      code,
+      redirect_uri: configuration.callbackUrl,
+    });
+    const tokenRequest =
+      provider === 'gitee'
+        ? {
+            method: 'POST',
+            headers: { Accept: 'application/json' },
+          }
+        : {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: tokenParameters,
+          };
+    // Gitee's token endpoint expects OAuth parameters on the POST URL.
     const tokenEndpoint =
       provider === 'gitee'
-        ? 'https://gitee.com/oauth/token'
+        ? `https://gitee.com/oauth/token?${tokenParameters.toString()}`
         : 'https://github.com/login/oauth/access_token';
-    const tokenResponse = requireJsonObject(await fetchJson(tokenEndpoint, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: configuration.clientId,
-        client_secret: configuration.clientSecret,
-        code,
-        redirect_uri: configuration.callbackUrl,
-      }),
-    }));
+    const tokenResponse = requireJsonObject(
+      await fetchJson(tokenEndpoint, tokenRequest),
+    );
     const accessToken = stringValue(tokenResponse.access_token);
     if (!accessToken) {
       throw new UnauthorizedException('第三方授权未成功');
