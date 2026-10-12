@@ -6,6 +6,7 @@ import { RefreshTokenEntity, UserEntity } from '../entities/index.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from '../../config/auth.constants.js';
 
 @Injectable()
+/** 管理 Refresh Token 哈希，提供一次性轮换和撤销操作。 */
 export class RefreshTokenRepository {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 

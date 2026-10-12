@@ -32,6 +32,15 @@ describe('application configuration', () => {
     });
   });
 
+  it('uses the same default backend port as the frontend development proxy', () => {
+    const config = createAppConfiguration({
+      JWT_SECRET: 'test-secret-at-least-thirty-two-characters',
+    });
+    expect(config.server.port).toBe(3000);
+    expect(config.oauth.gitee.callbackUrl).toContain(':3000/');
+    expect(config.oauth.github.callbackUrl).toContain(':3000/');
+  });
+
   it('uses a configurable directory for HTTP log files', () => {
     expect(
       createAppConfiguration({ LOG_DIR: 'var/app-logs' }).logging.directory,

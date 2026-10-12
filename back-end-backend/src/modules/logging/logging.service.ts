@@ -5,6 +5,7 @@ import {
 } from '../../../mysql/repositories/logs.repository.js';
 
 @Injectable()
+/** 提供审计日志写入和管理员分页检索功能。 */
 export class LoggingService {
   private readonly logger = new Logger(LoggingService.name);
 

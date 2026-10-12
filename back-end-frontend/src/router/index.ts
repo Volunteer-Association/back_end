@@ -71,6 +71,7 @@ const router = createRouter({
   ],
 })
 
+/** 统一执行页面登录检查及管理员页面的角色检查。 */
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.public) {

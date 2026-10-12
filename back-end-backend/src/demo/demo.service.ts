@@ -3,6 +3,7 @@ import { CreateDemoDto } from './dto/create-demo.dto.js';
 import { UpdateDemoDto } from './dto/update-demo.dto.js';
 
 @Injectable()
+/** 演示 CRUD 的占位服务；目前不连接数据库，也不持久化任何资源。 */
 export class DemoService {
   create(_createDemoDto: CreateDemoDto) {
     return 'This action adds a new demo';

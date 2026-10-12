@@ -35,6 +35,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 @Injectable()
+/** 持久化 OAuth 身份、授权状态及一次性登录兑换码。 */
 export class OAuthRepository {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,

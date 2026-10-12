@@ -1,5 +1,6 @@
 import { request } from '../client'
 
+/** 登录后可安全放入前端会话状态的用户字段，不包含密码或认证密钥。 */
 export interface LoginUser {
   id: string
   username: string
@@ -19,6 +20,7 @@ export interface UserProfile {
   sex: number | null
 }
 
+/** 登录、注册和 OAuth 兑换共用的会话响应结构。 */
 export interface LoginResponse {
   code: number
   message: string
@@ -40,12 +42,14 @@ export interface AuditLog {
 
 export type OAuthProvider = 'gitee' | 'github'
 
+/** 使用本地账号密码登录，并由浏览器接收 HttpOnly Refresh Token。 */
 export function login(data: { username: string; password: string }) {
   return request.post<LoginResponse>('/auth/login', data, {
     withCredentials: true,
   })
 }
 
+/** 请求向邮箱发送一次性注册验证码。 */
 export function sendRegistrationCode(data: { email: string }) {
   return request.post<{
     message: string
@@ -53,6 +57,7 @@ export function sendRegistrationCode(data: { email: string }) {
   }>('/auth/register/email-code', data)
 }
 
+/** 使用邮箱验证码创建本地账号并建立登录会话。 */
 export function register(data: {
   username: string
   email: string
@@ -64,10 +69,12 @@ export function register(data: {
   })
 }
 
+/** 查询后端已配置的第三方登录平台。 */
 export function getOAuthProviders() {
   return request.get<{ providers: OAuthProvider[] }>('/auth/oauth/providers')
 }
 
+/** 以 OAuth 回调产生的一次性兑换码创建本地登录会话。 */
 export function exchangeOAuthCode(code: string) {
   return request.post<LoginResponse>(
     '/auth/oauth/exchange',
@@ -76,12 +83,14 @@ export function exchangeOAuthCode(code: string) {
   )
 }
 
+/** 撤销当前会话的 Refresh Token 并清除服务端 Cookie。 */
 export function logoutSession() {
   return request.post<void>('/auth/logout', undefined, {
     withCredentials: true,
   })
 }
 
+/** 查询当前用户是否已设置本地账号和密码。 */
 export function getPasswordStatus() {
   return request.get<{
     username: string
@@ -90,6 +99,7 @@ export function getPasswordStatus() {
   }>('/auth/password')
 }
 
+/** 设置首次本地凭据，或验证旧密码后修改密码。 */
 export function setLocalPassword(data: {
   username?: string
   currentPassword?: string
@@ -103,10 +113,12 @@ export function setLocalPassword(data: {
   }>('/auth/password', data)
 }
 
+/** 获取当前登录用户的个人资料。 */
 export function getUserProfile() {
   return request.get<UserProfile>('/auth/profile')
 }
 
+/** 更新当前用户允许编辑的个人资料字段。 */
 export function updateUserProfile(data: {
   nickname?: string | null
   mobile?: string | null
@@ -115,10 +127,12 @@ export function updateUserProfile(data: {
   return request.patch<UserProfile>('/auth/profile', data)
 }
 
+/** 查询当前用户已经关联的第三方平台。 */
 export function getLinkedOAuthProviders() {
   return request.get<OAuthProvider[]>('/auth/oauth-links')
 }
 
+/** 管理员分页查询审计日志。 */
 export function getAuditLogs(params: {
   page: number
   limit: number
@@ -132,6 +146,7 @@ export function getAuditLogs(params: {
   }>('/admin/logs', { params })
 }
 
+/** 为已登录用户启动第三方账号绑定流程。 */
 export function startOAuthLink(provider: OAuthProvider) {
   return request.post<{ authorizationUrl: string }>(
     `/auth/oauth/${provider}/link`,

@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import type { NextFunction, Request, Response } from 'express';
 
 @Injectable()
+/** 记录请求 ID、响应状态和耗时，并按日期追加到受限权限的日志文件。 */
 export class HttpLoggingMiddleware implements NestMiddleware {
   private readonly logger = new Logger('HTTP');
 

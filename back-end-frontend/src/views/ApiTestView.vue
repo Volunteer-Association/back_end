@@ -25,18 +25,7 @@
     </div>
 
     <div class="test-section">
-      <h2>3. 音频操作</h2>
-      <div class="audio-actions">
-        <el-button @click="getAudio" :loading="loading.audioGet">获取音频</el-button>
-        <el-button @click="updateAudio" :loading="loading.audioUpdate">更新音频</el-button>
-      </div>
-      <div v-if="audioResult" class="result">
-        <pre>{{ audioResult }}</pre>
-      </div>
-    </div>
-
-    <div class="test-section">
-      <h2>4. 文件上传</h2>
+      <h2>3. 文件上传</h2>
       <p>请前往 <router-link to="/upload">文件上传页面</router-link> 测试文件上传功能</p>
     </div>
   </div>
@@ -49,10 +38,8 @@ import {
   createDemo as createDemoRequest,
   findDemo as findDemoRequest,
   findDemos,
-  getAudio as getAudioRequest,
   getSystemInfo as getSystemInfoRequest,
   removeDemo as removeDemoRequest,
-  updateAudio as updateAudioRequest,
   updateDemo as updateDemoRequest,
 } from '@/api'
 
@@ -62,14 +49,11 @@ const loading = reactive({
   findAll: false,
   findOne: false,
   update: false,
-  remove: false,
-  audioGet: false,
-  audioUpdate: false
+  remove: false
 })
 
 const systemInfo = ref<unknown>(null)
 const demoResult = ref<unknown>(null)
-const audioResult = ref<unknown>(null)
 
 // 系统信息
 const getSystemInfo = async () => {
@@ -80,7 +64,20 @@ const getSystemInfo = async () => {
     ElMessage.success('系统信息获取成功')
   } catch (error) {
     console.error('获取系统信息失败:', error)
-    ElMessage.error('获取系统信息失败')
+    systemInfo.value = null
+    const responseError =
+      typeof error === 'object' && error !== null
+        ? (error as { statusCode?: unknown; message?: unknown })
+        : null
+    if (responseError?.statusCode === 401) {
+      ElMessage.error('系统信息接口需要有效登录，请重新登录后重试')
+    } else {
+      ElMessage.error(
+        typeof responseError?.message === 'string'
+          ? `获取系统信息失败：${responseError.message}`
+          : '获取系统信息失败，请稍后重试',
+      )
+    }
   } finally {
     loading.system = false
   }
@@ -165,34 +162,6 @@ const deleteDemo = async () => {
   }
 }
 
-// 音频操作
-const getAudio = async () => {
-  loading.audioGet = true
-  try {
-    const response = await getAudioRequest('test')
-    audioResult.value = response
-    ElMessage.success('获取音频成功')
-  } catch (error) {
-    console.error('获取音频失败:', error)
-    ElMessage.error('获取音频失败')
-  } finally {
-    loading.audioGet = false
-  }
-}
-
-const updateAudio = async () => {
-  loading.audioUpdate = true
-  try {
-    const response = await updateAudioRequest('new-audio-value')
-    audioResult.value = response
-    ElMessage.success('更新音频成功')
-  } catch (error) {
-    console.error('更新音频失败:', error)
-    ElMessage.error('更新音频失败')
-  } finally {
-    loading.audioUpdate = false
-  }
-}
 </script>
 
 <style scoped>

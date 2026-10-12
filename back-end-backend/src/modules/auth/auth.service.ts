@@ -39,6 +39,7 @@ type SessionUser = Pick<
 >;
 
 @Injectable()
+/** 处理本地认证、凭证设置及 Access/Refresh Token 会话生命周期。 */
 export class AuthService {
   constructor(
     private readonly usersService: UsersService,
@@ -105,6 +106,7 @@ export class AuthService {
       throw new BadRequestException('该账号尚未设置本地密码');
     }
 
+    // OAuth 初始内部账号不能作为用户长期使用的本地登录名。
     const username = requestedUsername?.trim() || credentials.username;
     if (
       GENERATED_OAUTH_USERNAME.test(credentials.username) &&

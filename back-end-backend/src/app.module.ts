@@ -1,11 +1,4 @@
-/*
- * @Author: chenguihui
- * @Date: 2023-07-04 01:20:37
- * @LastEditors: chenguihui
- * @LastEditTime: 2023-07-07 12:12:28
- * @Description: 头部注释
- * @filePath: Do not edit
- */
+/** 应用根模块：装配运行配置、数据库连接及各业务模块。 */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import {

@@ -8,6 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 
 @Injectable()
+/** 校验 Bearer Access Token，并将令牌载荷放入请求 user 供控制器使用。 */
 export class AuthGuard implements CanActivate {
   constructor(private jwtService: JwtService) {}
 
@@ -42,6 +43,7 @@ export class AuthGuard implements CanActivate {
   }
 
   private extractTokenFromHeader(request: Request): string | undefined {
+    // 只接受一个规范的 Bearer 值，拒绝多段或其他认证方案。
     const [type, token, extra] = request.headers.authorization?.split(' ') ?? [];
     return type?.toLowerCase() === 'bearer' && token && !extra
       ? token

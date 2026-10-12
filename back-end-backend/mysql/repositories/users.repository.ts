@@ -30,6 +30,7 @@ export type AuthenticationUser = Pick<
 >;
 
 @Injectable()
+/** 封装认证账号和用户详情的数据库读写操作。 */
 export class UsersRepository {
   constructor(
     @InjectRepository(UserEntity)
@@ -38,6 +39,7 @@ export class UsersRepository {
     private readonly profileRepository: Repository<UserProfileEntity>,
   ) {}
 
+  /** 通过登录名查询认证信息，并一并装载资料和角色。 */
   findByUsernameForAuthentication(
     username: string,
   ): Promise<AuthenticationUser | null> {
@@ -51,6 +53,7 @@ export class UsersRepository {
       .getOne();
   }
 
+  /** 每次成功登录后更新最后登录时间和客户端 IP。 */
   async updateLastLogin(
     userId: string,
     ipAddress?: string,
@@ -64,6 +67,7 @@ export class UsersRepository {
     );
   }
 
+  /** 查询用户的本地密码哈希；未设置密码时返回 null。 */
   async findPasswordHash(userId: string): Promise<string | null> {
     const user = await this.repository
       .createQueryBuilder('user')
@@ -73,6 +77,7 @@ export class UsersRepository {
     return user?.password ?? null;
   }
 
+  /** 查询账号名和本地密码哈希，供账号安全流程使用。 */
   async findLocalCredentials(
     userId: string,
   ): Promise<{ username: string; password: string | null } | null> {
@@ -86,6 +91,7 @@ export class UsersRepository {
       : null;
   }
 
+  /** 保存本地登录名及密码哈希，并记录最后操作人。 */
   async setLocalCredentials(
     userId: string,
     username: string,
@@ -103,6 +109,7 @@ export class UsersRepository {
     );
   }
 
+  /** 读取用户详情表中的公开个人资料字段。 */
   async findProfile(userId: string): Promise<UserProfile | null> {
     const profile = await this.profileRepository.findOne({
       where: { userId },
@@ -117,6 +124,7 @@ export class UsersRepository {
     };
   }
 
+  /** 更新允许用户编辑的字段，并以当前用户作为审计操作人。 */
   async updateProfile(
     userId: string,
     operator: string,

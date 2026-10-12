@@ -41,6 +41,7 @@ function isDuplicateKeyError(error: unknown): boolean {
 }
 
 @Injectable()
+/** 管理邮箱验证码发送、校验和本地账号原子注册。 */
 export class RegistrationService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,

@@ -12,6 +12,7 @@ export interface CreateLogInput {
 }
 
 @Injectable()
+/** 写入审计事件并按时间倒序查询分页结果。 */
 export class LogsRepository {
   constructor(
     @InjectRepository(LogEntity)

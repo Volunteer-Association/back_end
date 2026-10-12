@@ -62,6 +62,7 @@ function requireJsonObject(payload: unknown): JsonObject {
 }
 
 @Injectable()
+/** 封装第三方授权、资料获取、登录兑换及身份绑定流程。 */
 export class OAuthService {
   private readonly logger = new Logger(OAuthService.name);
 
@@ -90,6 +91,7 @@ export class OAuthService {
     provider: OAuthProvider,
     userId: string | null = null,
   ): Promise<{ state: string; url: string }> {
+    // state 同时保存在数据库与短期 Cookie 中，用于校验回调来源和防止重放。
     this.requireProviderConfiguration(provider);
     const state = randomBytes(32).toString('base64url');
     await this.oauthRepository.createState(state, provider, userId);

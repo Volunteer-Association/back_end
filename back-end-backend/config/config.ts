@@ -2,6 +2,7 @@ import { registerAs } from '@nestjs/config';
 import { resolve } from 'node:path';
 type Environment = Record<string, string | undefined>;
 
+/** 读取非空环境变量；未设置或全为空白时使用默认值。 */
 function value(
   env: Environment,
   key: string,
@@ -30,6 +31,7 @@ function integer(
   return parsed;
 }
 
+/** 在多个历史/标准变量名中按优先级选择并校验整数配置。 */
 function integerFrom(
   env: Environment,
   keys: string[],
@@ -41,6 +43,7 @@ function integerFrom(
   return integer(env, key ?? keys[0], fallback, minimum, maximum);
 }
 
+/** 将 .env 键转换为业务配置对象，集中维护默认值和兼容别名。 */
 export function createAppConfiguration(env: Environment = process.env) {
   const nodeEnv = value(env, 'NODE_ENV', 'development');
   const isProduction = nodeEnv === 'production';
@@ -65,7 +68,7 @@ export function createAppConfiguration(env: Environment = process.env) {
     nodeEnv,
     server: {
       host: value(env, 'SERVER_IP', '0.0.0.0'),
-      port: integerFrom(env, ['PORT', 'SERVER_PORT'], 3001, 1, 65535),
+      port: integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535),
       staticPrefix: prefix,
     },
     corsOrigins,
@@ -102,7 +105,7 @@ export function createAppConfiguration(env: Environment = process.env) {
         callbackUrl: value(
           env,
           'GITEE_CALLBACK_URL',
-          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3001, 1, 65535)}/auth/oauth/gitee/callback`,
+          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535)}/auth/oauth/gitee/callback`,
         ),
       },
       github: {
@@ -111,7 +114,7 @@ export function createAppConfiguration(env: Environment = process.env) {
         callbackUrl: value(
           env,
           'GITHUB_CALLBACK_URL',
-          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3001, 1, 65535)}/auth/oauth/github/callback`,
+          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535)}/auth/oauth/github/callback`,
         ),
       },
     },
@@ -212,6 +215,7 @@ export function validateEnvironment(env: Environment): Environment {
   return env;
 }
 
+/** 返回当前环境专属文件、兼容旧命名及通用 .env 的加载顺序。 */
 export function getEnvironmentFilePaths(env: Environment = process.env): string[] {
   const nodeEnv = value(env, 'NODE_ENV', 'development');
   const legacyName =

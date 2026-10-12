@@ -59,6 +59,7 @@ onMounted(async () => {
   }
 
   try {
+    // 登录成功后先读取本地凭据状态，未完善的第三方账号必须先完成引导。
     await auth.completeOAuth(code)
     ElMessage.success('登录成功')
     try {

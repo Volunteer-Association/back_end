@@ -7,6 +7,7 @@ import {
 } from '../../../mysql/repositories/users.repository.js';
 
 @Injectable()
+/** 作为用户账号及详情数据仓储的业务访问层。 */
 export class UsersService {
   constructor(private readonly usersRepository: UsersRepository) {}
 

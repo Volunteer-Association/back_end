@@ -2,6 +2,12 @@
 
 本项目由 Vue 3 前端和 NestJS 后端组成，后端使用 MySQL 持久化用户数据并通过 JWT 保护接口。前后端分别维护依赖、环境变量和构建流程；本地开发通过 Vite 代理 API，容器部署通过 Nginx/Compose 转发请求。
 
+## API 文档
+
+启动后端后打开 `http://localhost:3000/api/` 查看 Swagger UI。认证、账号资料、OAuth、系统资源、文件上传和演示接口均按业务分组并标注请求字段、允许值、示例及常见状态码。需要登录的接口在 Swagger 中点击 **Authorize**，填入登录接口返回的 Access Token（只填令牌本身，不加 `Bearer ` 前缀）；Refresh Token 由 HttpOnly Cookie 管理，不应手动填写或暴露给前端代码。
+
+说明：`/demo` 是尚未连接持久化存储的占位演示接口，文档已明确标注其仅返回模拟结果。真实业务数据请接入对应实体和仓储后再开放使用。
+
 ## 赞助
 
 如果这个项目对你有帮助，欢迎自愿赞助，感谢支持与鼓励！
@@ -173,6 +179,8 @@ VITE_API_PROXY_TARGET=http://localhost:3000
 VITE_API_TIMEOUT=10000
 VITE_APP_TITLE=后台管理系统
 ```
+
+`GET /system` 需要有效的 Access Token。前端 API 客户端会自动附带登录令牌，并在令牌过期时尝试刷新；若返回 401，先确认登录状态仍有效，且 `VITE_API_PROXY_TARGET` 指向运行此版本后端的端口。后端和前端代理的默认端口现统一为 `3000`。系统信息响应仅返回 CPU 摘要、内存、架构、平台、版本和运行时间，不再返回用户目录、网络接口等主机敏感信息。
 
 启动前端：
 

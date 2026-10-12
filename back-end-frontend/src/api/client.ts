@@ -15,6 +15,7 @@ export const http = axios.create({
   timeout: Number(import.meta.env.VITE_API_TIMEOUT || 10000),
 })
 
+/** 每次 API 请求附带当前 Access Token；Refresh Token 不暴露给 JavaScript。 */
 http.interceptors.request.use((config) => {
   const token = localStorage.getItem(ACCESS_TOKEN_KEY)
   if (token) {
@@ -25,6 +26,7 @@ http.interceptors.request.use((config) => {
 
 let refreshPromise: Promise<string> | null = null
 
+/** 通过 HttpOnly Cookie 刷新短期 Access Token，并合并并发刷新请求。 */
 function refreshAccessToken(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = axios
@@ -52,12 +54,14 @@ function refreshAccessToken(): Promise<string> {
   return refreshPromise
 }
 
+/** 清除所有本地会话缓存，供刷新失效时执行。 */
 function clearLocalSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(LEGACY_TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
 }
 
+/** 登录、注册及令牌端点自身失败时不递归触发令牌刷新。 */
 function isAuthenticationRequest(url: string | undefined) {
   const path = url?.split('?')[0] ?? ''
   return [
@@ -111,6 +115,7 @@ http.interceptors.response.use(
   },
 )
 
+/** 为业务模块提供统一的 Axios 请求方法，并只返回响应数据体。 */
 export const request = {
   get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
     return http.get<T>(url, config).then(({ data }) => data)
