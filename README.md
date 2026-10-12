@@ -8,7 +8,7 @@
 
 | 支付宝 | 微信 |
 |:---:|:---:|
-| <img src="https://bucket-ben.oss-cn-guangzhou.aliyuncs.com/back-end/%E6%94%AF%E4%BB%98%E5%AE%9D%E6%94%B6%E6%AC%BE%E7%A0%81.jpg?OSSAccessKeyId=LTAI5tKNApETFgYCwPLiuZL1&Expires=1755964105&Signature=eSUASk0hBk6KmaAfvzq26gFwsWQ%3D" alt="支付宝收款码" width="220"> | <img src="https://bucket-ben.oss-cn-guangzhou.aliyuncs.com/back-end/%E5%BE%AE%E4%BF%A1%E6%94%B6%E6%AC%BE%E7%A0%81.png?OSSAccessKeyId=LTAI5tKNApETFgYCwPLiuZL1&Expires=1755963892&Signature=fhsFURxU7s90vDZ2UEBbuG8ACIg%3D" alt="微信收款码" width="220"> |
+| <img src="./back-end-backend/public/zfb.jpg" alt="支付宝收款码" width="220"> | <img src="./back-end-backend/public/wx.jpg" alt="微信收款码" width="220"> |
 
 > **图片链接提示：** 当前收款码链接带有有效期，可能已经过期而无法显示。建议将收款码图片放入仓库的 `docs/images/` 并改用相对路径，或替换为长期有效的公开图片链接。
 
