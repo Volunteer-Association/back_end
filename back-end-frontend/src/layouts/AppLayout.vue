@@ -18,6 +18,13 @@
         <RouterLink :to="{ name: 'api-test' }">API 测试</RouterLink>
       </nav>
       <div class="account">
+        <el-avatar
+          :size="34"
+          :src="auth.user?.avatar || undefined"
+          :alt="auth.user?.nickname || auth.user?.username || '用户头像'"
+        >
+          {{ (auth.user?.nickname || auth.user?.username || 'U').slice(0, 1) }}
+        </el-avatar>
         <span>{{ auth.user?.nickname || auth.user?.username }}</span>
         <el-button text @click="signOut">退出登录</el-button>
       </div>

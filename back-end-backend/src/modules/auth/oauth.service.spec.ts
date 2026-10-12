@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { jest } from '@jest/globals';
 import { OAuthRepository } from '../../../mysql/repositories/oauth.repository.js';
@@ -149,6 +149,42 @@ describe('OAuthService', () => {
       'valid-state',
       'gitee',
     );
+  });
+
+  it('logs a safe Gitee token-exchange reason when the provider rejects credentials', async () => {
+    oauthRepository.consumeState.mockResolvedValue({
+      provider: 'gitee',
+      userId: null,
+    });
+    const warning = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          error: 'invalid_grant',
+          error_description: 'redirect_uri does not match',
+        }),
+      ),
+    );
+
+    await expect(
+      service.completeAuthorization(
+        'gitee',
+        'sensitive-authorization-code',
+        'valid-state',
+      ),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
+
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'provider=gitee stage=token_exchange code=invalid_grant',
+      ),
+    );
+    const loggedWarning = String(warning.mock.calls[0]?.[0]);
+    expect(loggedWarning).toContain('redirect_uri does not match');
+    expect(loggedWarning).not.toContain('sensitive-authorization-code');
+    expect(loggedWarning).not.toContain('gitee-client-secret');
   });
 
   it('handles GitHub login independently and links its verified profile', async () => {

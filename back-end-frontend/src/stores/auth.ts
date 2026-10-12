@@ -58,6 +58,12 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(USER_KEY, JSON.stringify(user.value))
   }
 
+  function updateUsername(username: string) {
+    if (!user.value) return
+    user.value = { ...user.value, username }
+    localStorage.setItem(USER_KEY, JSON.stringify(user.value))
+  }
+
   async function logout() {
     try {
       await logoutSession()
@@ -77,6 +83,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     completeOAuth,
+    updateUsername,
     logout,
   }
 })

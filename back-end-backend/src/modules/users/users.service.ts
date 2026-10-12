@@ -21,11 +21,21 @@ export class UsersService {
     await this.usersRepository.updateLastLogin(user.userId, ipAddress);
   }
 
-  findPasswordHash(userId: string): Promise<string | null> {
-    return this.usersRepository.findPasswordHash(userId);
+  findLocalCredentials(
+    userId: string,
+  ): Promise<{ username: string; password: string | null } | null> {
+    return this.usersRepository.findLocalCredentials(userId);
   }
 
-  setPassword(userId: string, passwordHash: string): Promise<void> {
-    return this.usersRepository.setPassword(userId, passwordHash);
+  setLocalCredentials(
+    userId: string,
+    username: string,
+    passwordHash: string,
+  ): Promise<void> {
+    return this.usersRepository.setLocalCredentials(
+      userId,
+      username,
+      passwordHash,
+    );
   }
 }

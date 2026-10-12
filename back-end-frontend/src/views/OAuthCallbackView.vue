@@ -21,6 +21,7 @@ import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { getPasswordStatus } from '@/api/modules/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -60,6 +61,20 @@ onMounted(async () => {
   try {
     await auth.completeOAuth(code)
     ElMessage.success('登录成功')
+    try {
+      const accountStatus = await getPasswordStatus()
+      if (
+        accountStatus.requiresUsernameSetup ||
+        !accountStatus.hasLocalPassword
+      ) {
+        await router.replace({ name: 'account', query: { setup: '1' } })
+        return
+      }
+    } catch {
+      ElMessage.warning('无法读取本地账号状态，请在账号安全页面完成设置')
+      await router.replace({ name: 'account', query: { setup: '1' } })
+      return
+    }
     const savedRedirect = sessionStorage.getItem('oauth:redirect')
     sessionStorage.removeItem('oauth:redirect')
     const target =

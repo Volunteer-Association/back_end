@@ -17,11 +17,29 @@ import { UserProfileEntity } from './user-profile.entity.js';
 export type UserRole = 'admin' | 'user';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 
+export function mapEnabledStatus(enabled: unknown): UserStatus {
+  if (enabled === 'active' || enabled === 'inactive' || enabled === 'banned') {
+    return enabled;
+  }
+  const normalized =
+    enabled === 0 || enabled === '0'
+      ? 0
+      : enabled === 1 || enabled === '1'
+        ? 1
+        : enabled === 2 || enabled === '2'
+          ? 2
+          : -1;
+  return normalized === 0
+    ? 'active'
+    : normalized === 1
+      ? 'inactive'
+      : 'banned';
+}
+
 const statusTransformer: ValueTransformer = {
   to: (status: UserStatus) =>
     status === 'active' ? 0 : status === 'inactive' ? 1 : 2,
-  from: (enabled: number): UserStatus =>
-    enabled === 0 ? 'active' : enabled === 1 ? 'inactive' : 'banned',
+  from: mapEnabledStatus,
 };
 
 @Entity({ name: 'pms_user' })

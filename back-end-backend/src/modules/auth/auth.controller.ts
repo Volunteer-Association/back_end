@@ -165,7 +165,7 @@ export class AuthController {
     @Req() request: Request & { user?: unknown },
   ) {
     const userId = authenticatedUserId(request.user);
-    return { hasLocalPassword: await this.authService.hasLocalPassword(userId) };
+    return this.authService.getLocalAccountStatus(userId);
   }
 
   @Post('auth/password')
@@ -175,13 +175,19 @@ export class AuthController {
     @Req() request: Request & { user?: unknown },
   ) {
     const userId = authenticatedUserId(request.user);
-    await this.authService.setLocalPassword(
+    const username = await this.authService.setLocalPassword(
       userId,
       dto.currentPassword,
       dto.newPassword,
+      dto.username,
     );
     await this.audit(request, 'info', 'local_password_updated', userId);
-    return { message: '本地密码设置成功' };
+    return {
+      message: '本地账号和密码设置成功',
+      username,
+      hasLocalPassword: true,
+      requiresUsernameSetup: false,
+    };
   }
 
   @Get('auth/oauth/providers')

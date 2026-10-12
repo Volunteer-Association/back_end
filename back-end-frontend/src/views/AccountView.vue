@@ -4,8 +4,8 @@
       <template #header>
         <div class="card-heading">
           <div>
-            <h1>账号绑定</h1>
-            <p>绑定后可使用对应的 Gitee 或 GitHub 账号登录当前本地账号。</p>
+            <h1>账号安全与绑定</h1>
+            <p>设置本地密码，或管理可用于快捷登录的第三方账号。</p>
           </div>
           <el-button @click="router.push('/')">返回首页</el-button>
         </div>
@@ -55,24 +55,59 @@
     <el-card class="password-card" shadow="never">
       <template #header>
         <div>
-          <h2>本地密码</h2>
+          <h2>{{ requiresUsernameSetup ? '完善本地账号' : '本地密码' }}</h2>
           <p>
             {{
-              hasLocalPassword
-                ? '账号已设置本地密码；修改时需要验证当前密码。'
-                : '设置后，除第三方快捷登录外，也可以使用本地账号密码登录。'
+              requiresUsernameSetup
+                ? '首次第三方登录已完成，请设置自己的本地登录账号和密码。完成后可使用账号密码登录。'
+                : hasLocalPassword === true
+                  ? '账号已设置本地密码；修改时需要验证当前密码。'
+                  : hasLocalPassword === false
+                    ? '尚未设置本地密码。设置后，除第三方快捷登录外，也可以使用本地账号密码登录。'
+                    : '正在读取本地密码状态…'
             }}
           </p>
+          <div v-if="auth.user?.avatar" class="signed-in-profile">
+            <el-avatar
+              :size="56"
+              :src="auth.user.avatar"
+              :alt="auth.user.nickname || auth.user.username"
+            />
+            <span>{{ auth.user.nickname || auth.user.username }}</span>
+          </div>
         </div>
       </template>
+      <el-alert
+        v-if="passwordStatusError"
+        type="error"
+        :closable="false"
+        :title="passwordStatusError"
+      >
+        <el-button text type="primary" @click="loadPasswordStatus">
+          重新读取
+        </el-button>
+      </el-alert>
+      <el-skeleton v-else-if="hasLocalPassword === null" :rows="3" animated />
       <el-form
+        v-else
         ref="passwordFormRef"
         :model="passwordForm"
         :rules="passwordRules"
         label-position="top"
       >
         <el-form-item
-          v-if="hasLocalPassword"
+          v-if="requiresUsernameSetup"
+          label="本地登录账号"
+          prop="username"
+        >
+          <el-input
+            v-model.trim="passwordForm.username"
+            autocomplete="username"
+            placeholder="3-60 位字母、数字、下划线或连字符"
+          />
+        </el-form-item>
+        <el-form-item
+          v-if="hasLocalPassword === true"
           label="当前密码"
           prop="currentPassword"
         >
@@ -105,7 +140,13 @@
           :loading="savingPassword"
           @click="savePassword"
         >
-          {{ hasLocalPassword ? '修改本地密码' : '设置本地密码' }}
+          {{
+            requiresUsernameSetup
+              ? '保存本地账号并设置密码'
+              : hasLocalPassword
+                ? '修改本地密码'
+                : '设置本地密码'
+          }}
         </el-button>
       </el-form>
     </el-card>
@@ -116,6 +157,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import {
   getLinkedOAuthProviders,
   getOAuthProviders,
@@ -126,20 +168,34 @@ import {
 } from '@/api/modules/auth'
 
 const router = useRouter()
+const auth = useAuthStore()
 const loading = ref(true)
 const linkingProvider = ref<OAuthProvider | null>(null)
 const providers = ref<OAuthProvider[]>([])
 const linkedProviders = ref<OAuthProvider[]>([])
-const hasLocalPassword = ref(false)
+const hasLocalPassword = ref<boolean | null>(null)
+const requiresUsernameSetup = ref(false)
+const passwordStatusError = ref('')
 const passwordFormRef = ref<FormInstance>()
 const savingPassword = ref(false)
 const passwordForm = reactive({
+  username: '',
   currentPassword: '',
   newPassword: '',
   confirmPassword: '',
 })
 const passwordRules = computed<FormRules>(() => ({
-  currentPassword: hasLocalPassword.value
+  username: requiresUsernameSetup.value
+    ? [
+        { required: true, message: '请输入本地登录账号', trigger: 'blur' },
+        {
+          pattern: /^[A-Za-z0-9_-]{3,60}$/,
+          message: '登录账号需为 3-60 位字母、数字、下划线或连字符',
+          trigger: 'blur',
+        },
+      ]
+    : [],
+  currentPassword: hasLocalPassword.value === true
     ? [{ required: true, message: '请输入当前密码', trigger: 'blur' }]
     : [],
   newPassword: [
@@ -167,22 +223,42 @@ function providerName(provider: OAuthProvider) {
 
 onMounted(async () => {
   try {
-    const [available, linked, passwordStatus] = await Promise.all([
+    const [available, linked] = await Promise.all([
       getOAuthProviders(),
       getLinkedOAuthProviders(),
-      getPasswordStatus(),
     ])
     providers.value = available.providers
     linkedProviders.value = linked
-    hasLocalPassword.value = passwordStatus.hasLocalPassword
   } catch {
-    ElMessage.error('读取账号绑定状态失败，请刷新页面重试')
+    ElMessage.error('读取第三方账号绑定状态失败，请刷新页面重试')
   } finally {
     loading.value = false
   }
+  await loadPasswordStatus()
 })
 
+async function loadPasswordStatus() {
+  passwordStatusError.value = ''
+  hasLocalPassword.value = null
+  try {
+    const result = await getPasswordStatus()
+    hasLocalPassword.value = result.hasLocalPassword
+    requiresUsernameSetup.value = result.requiresUsernameSetup
+    passwordForm.username = result.requiresUsernameSetup ? '' : result.username
+  } catch (error: unknown) {
+    hasLocalPassword.value = null
+    passwordStatusError.value =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+        ? `无法读取密码状态：${error.message}`
+        : '无法读取密码状态，请确认后端已更新并重新启动。'
+  }
+}
+
 async function savePassword() {
+  if (hasLocalPassword.value === null) return
   if (!passwordFormRef.value || savingPassword.value) return
   const valid = await passwordFormRef.value.validate().catch(() => false)
   if (!valid) return
@@ -190,12 +266,18 @@ async function savePassword() {
   savingPassword.value = true
   try {
     await setLocalPassword({
-      ...(hasLocalPassword.value
+      ...(requiresUsernameSetup.value
+        ? { username: passwordForm.username }
+        : {}),
+      ...(hasLocalPassword.value === true
         ? { currentPassword: passwordForm.currentPassword }
         : {}),
       newPassword: passwordForm.newPassword,
     })
     hasLocalPassword.value = true
+    requiresUsernameSetup.value = false
+    auth.updateUsername(passwordForm.username || auth.user?.username || '')
+    passwordForm.username = ''
     passwordForm.currentPassword = ''
     passwordForm.newPassword = ''
     passwordForm.confirmPassword = ''
@@ -230,6 +312,8 @@ async function linkProvider(provider: OAuthProvider) {
 
 <style scoped>
 .account-page {
+  display: flex;
+  flex-direction: column;
   max-width: 820px;
   margin: 0 auto;
 }
@@ -266,7 +350,8 @@ async function linkProvider(provider: OAuthProvider) {
 }
 
 .password-card {
-  margin-top: 20px;
+  order: -1;
+  margin-bottom: 20px;
 }
 
 .password-card h2 {
@@ -278,6 +363,14 @@ async function linkProvider(provider: OAuthProvider) {
 .password-card p {
   margin: 8px 0 0;
   color: #7a8598;
+}
+
+.signed-in-profile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  color: #596579;
 }
 
 .provider-row {

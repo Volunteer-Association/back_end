@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ConflictException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
@@ -8,8 +9,12 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'node:crypto';
 import { RefreshTokenRepository } from '../../../mysql/repositories/refresh-token.repository.js';
 import { UserEntity, type UserRole } from '../../../mysql/entities/index.js';
+import { mapEnabledStatus } from '../../../mysql/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from '../../../config/auth.constants.js';
+import { QueryFailedError } from 'typeorm';
+
+const GENERATED_OAUTH_USERNAME = /^(?:gitee|github)_[a-f0-9]{40}$/;
 
 export interface AuthSession {
   code: number;
@@ -45,7 +50,7 @@ export class AuthService {
     const user = await this.usersService.findByUsernameForAuthentication(
       username,
     );
-    if (!user || user.status !== 'active' || !user.password) {
+    if (!user || mapEnabledStatus(user.status) !== 'active' || !user.password) {
       throw new UnauthorizedException('用户名或密码错误');
     }
 
@@ -59,15 +64,36 @@ export class AuthService {
   }
 
   async hasLocalPassword(userId: string): Promise<boolean> {
-    return (await this.usersService.findPasswordHash(userId)) !== null;
+    return Boolean(
+      (await this.usersService.findLocalCredentials(userId))?.password,
+    );
+  }
+
+  async getLocalAccountStatus(userId: string): Promise<{
+    username: string;
+    hasLocalPassword: boolean;
+    requiresUsernameSetup: boolean;
+  }> {
+    const credentials = await this.usersService.findLocalCredentials(userId);
+    if (!credentials) throw new UnauthorizedException('当前账号不存在');
+    return {
+      username: credentials.username,
+      hasLocalPassword: Boolean(credentials.password),
+      requiresUsernameSetup: GENERATED_OAUTH_USERNAME.test(
+        credentials.username,
+      ),
+    };
   }
 
   async setLocalPassword(
     userId: string,
     currentPassword: string | undefined,
     newPassword: string,
-  ): Promise<void> {
-    const currentHash = await this.usersService.findPasswordHash(userId);
+    requestedUsername?: string,
+  ): Promise<string> {
+    const credentials = await this.usersService.findLocalCredentials(userId);
+    if (!credentials) throw new UnauthorizedException('当前账号不存在');
+    const currentHash = credentials.password;
     if (currentHash) {
       if (
         !currentPassword ||
@@ -79,10 +105,38 @@ export class AuthService {
       throw new BadRequestException('该账号尚未设置本地密码');
     }
 
-    await this.usersService.setPassword(
-      userId,
-      await bcrypt.hash(newPassword, 12),
-    );
+    const username = requestedUsername?.trim() || credentials.username;
+    if (
+      GENERATED_OAUTH_USERNAME.test(credentials.username) &&
+      !requestedUsername?.trim()
+    ) {
+      throw new BadRequestException('请先设置自己的本地登录账号');
+    }
+    if (!/^[A-Za-z0-9_-]{3,60}$/.test(username)) {
+      throw new BadRequestException(
+        '登录账号需为 3-60 位字母、数字、下划线或连字符',
+      );
+    }
+
+    try {
+      await this.usersService.setLocalCredentials(
+        userId,
+        username,
+        await bcrypt.hash(newPassword, 12),
+      );
+    } catch (error: unknown) {
+      if (
+        error instanceof QueryFailedError &&
+        typeof error.driverError === 'object' &&
+        error.driverError !== null &&
+        'code' in error.driverError &&
+        error.driverError.code === 'ER_DUP_ENTRY'
+      ) {
+        throw new ConflictException('该登录账号已被使用');
+      }
+      throw error;
+    }
+    return username;
   }
 
   async refreshSession(refreshToken: string) {
@@ -97,7 +151,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('登录已过期，请重新登录');
     }
-    if (user.status !== 'active') {
+    if (mapEnabledStatus(user.status) !== 'active') {
       await this.refreshTokens.revoke(nextRefreshToken);
       throw new UnauthorizedException('登录已过期，请重新登录');
     }

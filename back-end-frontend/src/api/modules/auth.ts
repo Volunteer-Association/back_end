@@ -73,14 +73,24 @@ export function logoutSession() {
 }
 
 export function getPasswordStatus() {
-  return request.get<{ hasLocalPassword: boolean }>('/auth/password')
+  return request.get<{
+    username: string
+    hasLocalPassword: boolean
+    requiresUsernameSetup: boolean
+  }>('/auth/password')
 }
 
 export function setLocalPassword(data: {
+  username?: string
   currentPassword?: string
   newPassword: string
 }) {
-  return request.post<{ message: string }>('/auth/password', data)
+  return request.post<{
+    message: string
+    username: string
+    hasLocalPassword: boolean
+    requiresUsernameSetup: boolean
+  }>('/auth/password', data)
 }
 
 export function getLinkedOAuthProviders() {

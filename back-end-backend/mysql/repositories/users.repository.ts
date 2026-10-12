@@ -57,7 +57,27 @@ export class UsersRepository {
     return user?.password ?? null;
   }
 
-  async setPassword(userId: string, passwordHash: string): Promise<void> {
-    await this.repository.update({ userId }, { password: passwordHash });
+  async findLocalCredentials(
+    userId: string,
+  ): Promise<{ username: string; password: string | null } | null> {
+    const user = await this.repository
+      .createQueryBuilder('user')
+      .addSelect('user.password')
+      .where('user.userId = :userId', { userId })
+      .getOne();
+    return user
+      ? { username: user.username, password: user.password }
+      : null;
+  }
+
+  async setLocalCredentials(
+    userId: string,
+    username: string,
+    passwordHash: string,
+  ): Promise<void> {
+    await this.repository.update(
+      { userId },
+      { username, password: passwordHash },
+    );
   }
 }

@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { OAuthRepository } from '../../../mysql/repositories/oauth.repository.js';
 import type { OAuthProfile } from '../../../mysql/repositories/oauth.repository.js';
 import type { OAuthProvider } from '../../../mysql/entities/index.js';
+import { mapEnabledStatus } from '../../../mysql/entities/user.entity.js';
 import { randomBytes } from 'node:crypto';
 import { AuthService } from './auth.service.js';
 
@@ -30,15 +32,26 @@ async function fetchJson(
   url: string,
   options: RequestInit,
 ): Promise<unknown> {
-  const response = await fetch(url, {
-    ...options,
-    signal: AbortSignal.timeout(10_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    throw new ServiceUnavailableException('第三方登录服务暂时不可用');
+  }
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new ServiceUnavailableException('第三方登录服务返回了无效响应');
+  }
   if (!response.ok) {
     throw new ServiceUnavailableException('第三方登录服务暂时不可用');
   }
 
-  return response.json();
+  return payload;
 }
 
 function requireJsonObject(payload: unknown): JsonObject {
@@ -50,6 +63,8 @@ function requireJsonObject(payload: unknown): JsonObject {
 
 @Injectable()
 export class OAuthService {
+  private readonly logger = new Logger(OAuthService.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly oauthRepository: OAuthRepository,
@@ -120,6 +135,9 @@ export class OAuthService {
       provider,
     );
     if (!authorizationState) {
+      this.logger.warn(
+        `OAuth 阶段失败 provider=${provider} stage=state_validation`,
+      );
       throw new UnauthorizedException('登录状态无效或已过期');
     }
     const profile = await this.fetchProviderProfile(provider, authorizationCode);
@@ -133,7 +151,11 @@ export class OAuthService {
     }
 
     const user = await this.oauthRepository.findOrCreateUser(provider, profile);
-    if (user.status !== 'active') {
+    const accountStatus = mapEnabledStatus(user.status);
+    if (accountStatus !== 'active') {
+      this.logger.warn(
+        `OAuth 阶段失败 provider=${provider} stage=local_account_status status=${String(user.status)} normalized=${accountStatus}`,
+      );
       throw new UnauthorizedException('该账号当前不可登录');
     }
     return {
@@ -210,6 +232,13 @@ export class OAuthService {
     );
     const accessToken = stringValue(tokenResponse.access_token);
     if (!accessToken) {
+      const errorCode = stringValue(tokenResponse.error) ?? 'missing_access_token';
+      const errorDescription = stringValue(tokenResponse.error_description)
+        ?.replace(/[\r\n]+/g, ' ')
+        .slice(0, 160);
+      this.logger.warn(
+        `OAuth 阶段失败 provider=${provider} stage=token_exchange code=${errorCode}${errorDescription ? ` description=${errorDescription}` : ''}`,
+      );
       throw new UnauthorizedException('第三方授权未成功');
     }
 
@@ -233,6 +262,9 @@ export class OAuthService {
       typeof id === 'number' || typeof id === 'string' ? String(id) : '';
     const username = stringValue(profileResponse.login);
     if (!providerId || !username) {
+      this.logger.warn(
+        `OAuth 阶段失败 provider=${provider} stage=profile_validation hasId=${Boolean(providerId)} hasLogin=${Boolean(username)} fields=${Object.keys(profileResponse).sort().join(',').slice(0, 200)}`,
+      );
       throw new UnauthorizedException('无法读取第三方账号信息');
     }
 

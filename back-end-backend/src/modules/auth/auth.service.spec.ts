@@ -23,8 +23,8 @@ describe('AuthService', () => {
   const usersService = {
     findByUsernameForAuthentication: jest.fn(),
     updateLastLogin: jest.fn(),
-    findPasswordHash: jest.fn(),
-    setPassword: jest.fn(),
+    findLocalCredentials: jest.fn(),
+    setLocalCredentials: jest.fn(),
   };
   const jwtService = {
     signAsync: jest.fn(),
@@ -46,8 +46,11 @@ describe('AuthService', () => {
       password: passwordHash,
     });
     usersService.updateLastLogin.mockResolvedValue(undefined);
-    usersService.findPasswordHash.mockResolvedValue(null);
-    usersService.setPassword.mockResolvedValue(undefined);
+    usersService.findLocalCredentials.mockResolvedValue({
+      username: 'sample',
+      password: null,
+    });
+    usersService.setLocalCredentials.mockResolvedValue(undefined);
     jwtService.signAsync.mockResolvedValue('signed-token');
     refreshTokens.create.mockResolvedValue(undefined);
     service = new AuthService(
@@ -145,29 +148,61 @@ describe('AuthService', () => {
   });
 
   it('sets a local password for an OAuth-only account', async () => {
+    usersService.findLocalCredentials.mockResolvedValue({
+      username: 'gitee_abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+      password: null,
+    });
     await service.setLocalPassword(
       '1234567890123456789',
       undefined,
       'new-local-password',
+      'my-own-account',
     );
 
-    expect(usersService.setPassword).toHaveBeenCalledWith(
+    expect(usersService.setLocalCredentials).toHaveBeenCalledWith(
       '1234567890123456789',
+      'my-own-account',
       expect.any(String),
     );
-    const savedHash = usersService.setPassword.mock.calls[0]?.[1] as string;
+    const savedHash = usersService.setLocalCredentials.mock.calls[0]?.[2] as string;
     expect(savedHash).not.toBe('new-local-password');
     await expect(
       bcrypt.compare('new-local-password', savedHash),
     ).resolves.toBe(true);
-    usersService.findPasswordHash.mockResolvedValue(savedHash);
-    await expect(service.hasLocalPassword('1234567890123456789')).resolves.toBe(
-      true,
-    );
+    usersService.findLocalCredentials.mockResolvedValue({
+      username: 'my-own-account',
+      password: savedHash,
+    });
+    await expect(
+      service.getLocalAccountStatus('1234567890123456789'),
+    ).resolves.toEqual({
+      username: 'my-own-account',
+      hasLocalPassword: true,
+      requiresUsernameSetup: false,
+    });
+  });
+
+  it('requires a chosen local username for generated OAuth accounts', async () => {
+    usersService.findLocalCredentials.mockResolvedValue({
+      username: 'gitee_abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+      password: null,
+    });
+
+    await expect(
+      service.setLocalPassword(
+        '1234567890123456789',
+        undefined,
+        'new-local-password',
+      ),
+    ).rejects.toThrow('请先设置自己的本地登录账号');
+    expect(usersService.setLocalCredentials).not.toHaveBeenCalled();
   });
 
   it('requires the current local password before changing it', async () => {
-    usersService.findPasswordHash.mockResolvedValue(passwordHash);
+    usersService.findLocalCredentials.mockResolvedValue({
+      username: 'sample',
+      password: passwordHash,
+    });
 
     await expect(
       service.setLocalPassword(
@@ -177,6 +212,6 @@ describe('AuthService', () => {
       ),
     ).rejects.toBeInstanceOf(UnauthorizedException);
 
-    expect(usersService.setPassword).not.toHaveBeenCalled();
+    expect(usersService.setLocalCredentials).not.toHaveBeenCalled();
   });
 });
