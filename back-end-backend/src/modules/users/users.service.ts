@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import {
   AuthenticationUser,
+  EditableUserProfile,
+  UserProfile,
   UsersRepository,
 } from '../../../mysql/repositories/users.repository.js';
 
@@ -31,11 +33,25 @@ export class UsersService {
     userId: string,
     username: string,
     passwordHash: string,
+    operator: string,
   ): Promise<void> {
     return this.usersRepository.setLocalCredentials(
       userId,
       username,
       passwordHash,
+      operator,
     );
+  }
+
+  findProfile(userId: string): Promise<UserProfile | null> {
+    return this.usersRepository.findProfile(userId);
+  }
+
+  updateProfile(
+    userId: string,
+    operator: string,
+    changes: EditableUserProfile,
+  ): Promise<UserProfile | null> {
+    return this.usersRepository.updateProfile(userId, operator, changes);
   }
 }

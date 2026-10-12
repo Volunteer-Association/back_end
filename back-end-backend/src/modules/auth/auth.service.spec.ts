@@ -163,6 +163,7 @@ describe('AuthService', () => {
       '1234567890123456789',
       'my-own-account',
       expect.any(String),
+      'my-own-account',
     );
     const savedHash = usersService.setLocalCredentials.mock.calls[0]?.[2] as string;
     expect(savedHash).not.toBe('new-local-password');

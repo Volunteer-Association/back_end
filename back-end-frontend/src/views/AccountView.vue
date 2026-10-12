@@ -52,6 +52,58 @@
       </div>
     </el-card>
 
+    <el-card class="profile-card" shadow="never">
+      <template #header>
+        <div>
+          <h2>个人资料</h2>
+          <p>保存后会更新用户详情，并记录本次操作人及操作人 ID。</p>
+        </div>
+      </template>
+      <el-skeleton v-if="profileLoading" :rows="3" animated />
+      <el-alert
+        v-else-if="profileError"
+        type="error"
+        :closable="false"
+        :title="profileError"
+      >
+        <el-button text type="primary" @click="loadProfile">重新读取</el-button>
+      </el-alert>
+      <el-form v-else label-position="top">
+        <el-form-item label="邮箱">
+          <el-input :model-value="profile.email" disabled />
+        </el-form-item>
+        <el-form-item label="昵称">
+          <el-input
+            v-model.trim="profile.nickname"
+            maxlength="60"
+            show-word-limit
+            placeholder="请输入昵称"
+          />
+        </el-form-item>
+        <el-form-item label="手机号">
+          <el-input
+            v-model.trim="profile.mobile"
+            maxlength="11"
+            placeholder="选填，11 位手机号"
+          />
+        </el-form-item>
+        <el-form-item label="性别">
+          <el-select v-model="profile.sex" class="profile-sex">
+            <el-option label="保密" :value="2" />
+            <el-option label="女" :value="0" />
+            <el-option label="男" :value="1" />
+          </el-select>
+        </el-form-item>
+        <el-button
+          type="primary"
+          :loading="savingProfile"
+          @click="saveProfile"
+        >
+          保存个人资料
+        </el-button>
+      </el-form>
+    </el-card>
+
     <el-card class="password-card" shadow="never">
       <template #header>
         <div>
@@ -162,8 +214,10 @@ import {
   getLinkedOAuthProviders,
   getOAuthProviders,
   getPasswordStatus,
+  getUserProfile,
   setLocalPassword,
   startOAuthLink,
+  updateUserProfile,
   type OAuthProvider,
 } from '@/api/modules/auth'
 
@@ -178,6 +232,15 @@ const requiresUsernameSetup = ref(false)
 const passwordStatusError = ref('')
 const passwordFormRef = ref<FormInstance>()
 const savingPassword = ref(false)
+const profileLoading = ref(true)
+const savingProfile = ref(false)
+const profileError = ref('')
+const profile = reactive({
+  email: '',
+  nickname: '',
+  mobile: '',
+  sex: 2,
+})
 const passwordForm = reactive({
   username: '',
   currentPassword: '',
@@ -222,6 +285,7 @@ function providerName(provider: OAuthProvider) {
 }
 
 onMounted(async () => {
+  await loadProfile()
   try {
     const [available, linked] = await Promise.all([
       getOAuthProviders(),
@@ -236,6 +300,71 @@ onMounted(async () => {
   }
   await loadPasswordStatus()
 })
+
+async function loadProfile() {
+  profileLoading.value = true
+  profileError.value = ''
+  try {
+    const result = await getUserProfile()
+    profile.email = result.email
+    profile.nickname = result.nickname || ''
+    profile.mobile = result.mobile || ''
+    profile.sex = result.sex ?? 2
+  } catch (error: unknown) {
+    profileError.value =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+        ? `无法读取个人资料：${error.message}`
+        : '无法读取个人资料，请稍后重试。'
+  } finally {
+    profileLoading.value = false
+  }
+}
+
+async function saveProfile() {
+  if (savingProfile.value) return
+  if (profile.nickname.length > 60) {
+    ElMessage.error('昵称不能超过 60 个字符')
+    return
+  }
+  if (profile.mobile && !/^\d{11}$/.test(profile.mobile)) {
+    ElMessage.error('手机号需为 11 位数字')
+    return
+  }
+  savingProfile.value = true
+  try {
+    const updated = await updateUserProfile({
+      nickname: profile.nickname || null,
+      mobile: profile.mobile || null,
+      sex: profile.sex,
+    })
+    profile.email = updated.email
+    profile.nickname = updated.nickname || ''
+    profile.mobile = updated.mobile || ''
+    profile.sex = updated.sex ?? 2
+    auth.updateProfile({
+      email: updated.email,
+      nickname: updated.nickname,
+      avatar: updated.avatar,
+      mobile: updated.mobile,
+      sex: updated.sex,
+    })
+    ElMessage.success('个人资料已保存')
+  } catch (error: unknown) {
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+        ? error.message
+        : '个人资料保存失败，请重试'
+    ElMessage.error(message)
+  } finally {
+    savingProfile.value = false
+  }
+}
 
 async function loadPasswordStatus() {
   passwordStatusError.value = ''
@@ -352,6 +481,10 @@ async function linkProvider(provider: OAuthProvider) {
 .password-card {
   order: -1;
   margin-bottom: 20px;
+}
+
+.profile-sex {
+  width: 100%;
 }
 
 .password-card h2 {

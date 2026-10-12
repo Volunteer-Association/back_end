@@ -187,6 +187,10 @@ describe('RegistrationService', () => {
       userId: '1234567890123456789',
       email: 'person@example.com',
       nickname: 'person',
+      creater: '系统',
+      createrId: 'system',
+      operator: 'person',
+      operatorId: '1234567890123456789',
     });
     expect(verificationRepository.delete).toHaveBeenCalledWith({ id: 1 });
     expect(authService.createSession).toHaveBeenCalledTimes(1);

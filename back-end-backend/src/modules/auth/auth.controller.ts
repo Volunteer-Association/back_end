@@ -6,6 +6,8 @@ import {
   ForbiddenException,
   Get,
   Logger,
+  NotFoundException,
+  Patch,
   Param,
   Post,
   Query,
@@ -32,6 +34,8 @@ import type { LogLevel } from '../../../mysql/entities/log.entity.js';
 import { SendRegistrationCodeDto } from './dto/send-registration-code.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { SetPasswordDto } from './dto/set-password.dto.js';
+import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
+import { UsersService } from '../users/users.service.js';
 
 const OAUTH_PROVIDERS = ['gitee', 'github'] as const;
 const REFRESH_COOKIE = 'refresh_token';
@@ -60,6 +64,7 @@ function authenticatedUserId(user: unknown): string {
   ) {
     throw new BadRequestException('当前登录账号信息无效');
   }
+
   return user.sub;
 }
 
@@ -74,6 +79,7 @@ export class AuthController {
     private readonly oauthService: OAuthService,
     private readonly registrationService: RegistrationService,
     private readonly loggingService: LoggingService,
+    private readonly usersService: UsersService,
   ) {}
 
   @Post('auth/register/email-code')
@@ -188,6 +194,42 @@ export class AuthController {
       hasLocalPassword: true,
       requiresUsernameSetup: false,
     };
+  }
+
+  @Get('auth/profile')
+  @UseGuards(AuthGuard)
+  async getProfile(@Req() request: Request & { user?: unknown }) {
+    const profile = await this.usersService.findProfile(
+      authenticatedUserId(request.user),
+    );
+    if (!profile) throw new NotFoundException('用户资料不存在');
+    return profile;
+  }
+
+  @Patch('auth/profile')
+  @UseGuards(AuthGuard)
+  async updateProfile(
+    @Body() dto: UpdateProfileDto,
+    @Req() request: Request & { user?: unknown },
+  ) {
+    if (
+      dto.nickname === undefined &&
+      dto.mobile === undefined &&
+      dto.sex === undefined
+    ) {
+      throw new BadRequestException('请至少提交一项要修改的资料');
+    }
+    const userId = authenticatedUserId(request.user);
+    const credentials = await this.usersService.findLocalCredentials(userId);
+    if (!credentials) throw new NotFoundException('当前账号不存在');
+    const profile = await this.usersService.updateProfile(
+      userId,
+      credentials.username,
+      dto,
+    );
+    if (!profile) throw new NotFoundException('用户资料不存在');
+    await this.audit(request, 'info', 'profile_updated', userId);
+    return profile;
   }
 
   @Get('auth/oauth/providers')

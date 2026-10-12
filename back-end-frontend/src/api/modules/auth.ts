@@ -7,6 +7,16 @@ export interface LoginUser {
   nickname: string | null
   avatar: string | null
   role: 'admin' | 'user'
+  mobile?: string | null
+  sex?: number | null
+}
+
+export interface UserProfile {
+  email: string
+  nickname: string | null
+  avatar: string | null
+  mobile: string | null
+  sex: number | null
 }
 
 export interface LoginResponse {
@@ -91,6 +101,18 @@ export function setLocalPassword(data: {
     hasLocalPassword: boolean
     requiresUsernameSetup: boolean
   }>('/auth/password', data)
+}
+
+export function getUserProfile() {
+  return request.get<UserProfile>('/auth/profile')
+}
+
+export function updateUserProfile(data: {
+  nickname?: string | null
+  mobile?: string | null
+  sex?: number
+}) {
+  return request.patch<UserProfile>('/auth/profile', data)
 }
 
 export function getLinkedOAuthProviders() {

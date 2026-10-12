@@ -173,13 +173,18 @@ export class RegistrationService {
           .findOneBy({ key: 'user' });
         if (!userRole) throw new Error('Required default user role is missing');
 
+        const userId = await this.snowflakeIds.nextId();
         const user = users.create({
-          userId: await this.snowflakeIds.nextId(),
+          userId,
           username,
           password: await hash(input.password, 12),
           status: 'active',
           lastLoginIp: ipAddress?.slice(0, 50) ?? null,
           lastLoginAt: new Date(),
+          creater: '系统',
+          createrId: 'system',
+          operator: username,
+          operatorId: userId,
           roles: [userRole],
         });
         const savedUser = await users.save(user);
@@ -187,6 +192,10 @@ export class RegistrationService {
           userId: savedUser.userId,
           email,
           nickname: username,
+          creater: '系统',
+          createrId: 'system',
+          operator: username,
+          operatorId: savedUser.userId,
         });
         await profiles.save(profile);
         savedUser.profile = profile;

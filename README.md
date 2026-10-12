@@ -153,6 +153,8 @@ npm run start:dev
 
 第三方登录用户初始没有本地密码。登录后打开“账号绑定”页面可设置本地密码；已有密码的账号需提供当前密码才能修改。密码以 bcrypt 哈希保存，不会回传或记录明文；设置后可继续用本地登录账号（`pms_user.login_name`）及密码登录。相应接口为已登录用户专用的 `GET /auth/password`（查询是否已设置）和 `POST /auth/password`（设置/修改）。
 
+“账号安全与绑定”页面的个人资料区支持修改昵称、手机号和性别；邮箱目前只读，避免绕过邮箱验证流程。资料通过 `GET /auth/profile` 与 `PATCH /auth/profile` 读写 `users` 表，修改时将当前本地账号写入 `operator`，雪花用户 ID 写入 `operator_id`，并由 `updated_at` 自动记录时间。注册和首次 OAuth 建号时，创建人字段标记为系统，最后操作人字段记录新用户及其雪花 ID；设置/修改本地登录账号或密码也会同步更新 `pms_user.operator` 与 `operator_id`。
+
 本地账号登录与第三方登录都会签发 **15 分钟 Access Token**，专用于业务 API；**7 天 Refresh Token** 仅通过 HttpOnly Cookie 传递，数据库只保存哈希。Access Token 到期后，前端自动请求刷新接口，服务端原子消费旧 Refresh Token 并签发新的一对凭证；Refresh Token 过期、撤销或无效时才需要重新登录。退出登录会撤销当前 Refresh Token。登录、刷新与注销请求启用浏览器凭据传递；生产环境 Cookie 设置为 `Secure; SameSite=None`，因此需要 HTTPS。跨源请求还要求后端 CORS 开启 credentials、`CORS_ORIGINS` 精确列出前端 Origin（协议、域名和端口必须一致，不能使用 `*`），刷新/注销接口也会拒绝缺少 Origin 或不在白名单内的请求。即使 CORS 和 Cookie 设置正确，浏览器隐私策略仍可能阻止完全跨站点的第三方 Cookie；生产部署建议使用同站点子域名或由反向代理统一入口。执行用户表拆分迁移后旧 Refresh Token 和数字型 JWT 不再有效，用户需要重新登录。请保护好 `JWT_SECRET`，更换该值会使所有未过期 Access Token 失效。
 
 当前实际 `back_end` 数据库曾只读核对为旧版 `users`、`logs`、`files`，没有新认证/角色表。用户已明确要求不保留旧数据，因此 `back-end-backend/mysql/migrations/20261014_reset_auth_schema.sql` 是**破坏性重置脚本**：它会删除旧 `users`、`logs`、`files` 及已有的认证、OAuth、Token、角色和邮箱验证码表中的所有数据。先完整备份；确认可丢弃这些数据后执行该脚本，再执行 `back-end-backend/mysql/init.sql` 创建空的新结构和基础角色。脚本不会迁移或保留旧用户、管理员、日志或文件记录；所有用户需重新注册。真实数据库未由本次开发操作，迁移和初始化需要由数据库管理员手动执行。

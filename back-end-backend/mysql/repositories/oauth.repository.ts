@@ -74,6 +74,7 @@ export class OAuthRepository {
           .update(`${provider}:${profile.id}`)
           .digest('hex');
         const username = `${provider}_${providerHash.slice(0, 40)}`;
+        const userId = await this.snowflakeIds.nextId();
         const generatedEmail = `oauth-${providerHash}@users.invalid`;
         const candidateEmail = profile.email?.trim().toLowerCase();
         const emailExists =
@@ -86,11 +87,15 @@ export class OAuthRepository {
                 .getExists()
             : false;
         const user = users.create({
-          userId: await this.snowflakeIds.nextId(),
+          userId,
           username,
           password: null,
           status: 'active',
           lastLoginAt: new Date(),
+          creater: '系统',
+          createrId: 'system',
+          operator: username,
+          operatorId: userId,
           roles: [userRole],
         });
         const savedUser = await users.save(user);
@@ -107,6 +112,10 @@ export class OAuthRepository {
               provider
             ).slice(0, 60),
             avatar: profile.avatarUrl?.slice(0, 255) || null,
+            creater: '系统',
+            createrId: 'system',
+            operator: username,
+            operatorId: savedUser.userId,
           }),
         );
         await identityRepository.save(

@@ -1,7 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserEntity } from '../entities/index.js';
+import { UserEntity, UserProfileEntity } from '../entities/index.js';
+
+export interface EditableUserProfile {
+  nickname?: string | null;
+  mobile?: string | null;
+  sex?: number;
+}
+
+export interface UserProfile {
+  email: string;
+  nickname: string | null;
+  avatar: string | null;
+  mobile: string | null;
+  sex: number | null;
+}
 
 export type AuthenticationUser = Pick<
   UserEntity,
@@ -20,6 +34,8 @@ export class UsersRepository {
   constructor(
     @InjectRepository(UserEntity)
     private readonly repository: Repository<UserEntity>,
+    @InjectRepository(UserProfileEntity)
+    private readonly profileRepository: Repository<UserProfileEntity>,
   ) {}
 
   findByUsernameForAuthentication(
@@ -74,10 +90,47 @@ export class UsersRepository {
     userId: string,
     username: string,
     passwordHash: string,
+    operator: string,
   ): Promise<void> {
     await this.repository.update(
       { userId },
-      { username, password: passwordHash },
+      {
+        username,
+        password: passwordHash,
+        operator,
+        operatorId: userId,
+      },
     );
+  }
+
+  async findProfile(userId: string): Promise<UserProfile | null> {
+    const profile = await this.profileRepository.findOne({
+      where: { userId },
+    });
+    if (!profile) return null;
+    return {
+      email: profile.email,
+      nickname: profile.nickname,
+      avatar: profile.avatar,
+      mobile: profile.mobile,
+      sex: profile.sex,
+    };
+  }
+
+  async updateProfile(
+    userId: string,
+    operator: string,
+    changes: EditableUserProfile,
+  ): Promise<UserProfile | null> {
+    const result = await this.profileRepository.update(
+      { userId },
+      {
+        ...changes,
+        operator,
+        operatorId: userId,
+      },
+    );
+    if (!result.affected) return null;
+    return this.findProfile(userId);
   }
 }

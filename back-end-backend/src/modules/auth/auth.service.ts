@@ -123,6 +123,7 @@ export class AuthService {
         userId,
         username,
         await bcrypt.hash(newPassword, 12),
+        username,
       );
     } catch (error: unknown) {
       if (
