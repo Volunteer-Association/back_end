@@ -20,6 +20,10 @@ export interface UserProfile {
   sex: number | null
 }
 
+export interface SessionSettings {
+  allowMultiLogin: boolean
+}
+
 /** 登录、注册和 OAuth 兑换共用的会话响应结构。 */
 export interface LoginResponse {
   code: number
@@ -125,6 +129,16 @@ export function updateUserProfile(data: {
   sex?: number
 }) {
   return request.patch<UserProfile>('/auth/profile', data)
+}
+
+/** 获取当前账号的多设备登录设置。 */
+export function getSessionSettings() {
+  return request.get<SessionSettings>('/auth/session-settings')
+}
+
+/** 更新当前账号的多设备登录设置。 */
+export function updateSessionSettings(data: SessionSettings) {
+  return request.patch<SessionSettings>('/auth/session-settings', data)
 }
 
 /** 查询当前用户已经关联的第三方平台。 */

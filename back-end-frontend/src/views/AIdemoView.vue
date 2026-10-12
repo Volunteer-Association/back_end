@@ -78,4 +78,21 @@ body {
     background-color: white;
 }
 
+.ai-demo img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+}
+
+.ai-demo-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.ai-demo-left,
+.ai-demo-right {
+    min-width: 0;
+    flex: 1 1 240px;
+}
 </style>

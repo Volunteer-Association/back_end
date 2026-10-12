@@ -25,6 +25,7 @@ http.interceptors.request.use((config) => {
 })
 
 let refreshPromise: Promise<string> | null = null
+let sessionExpirationHandled = false
 
 /** 通过 HttpOnly Cookie 刷新短期 Access Token，并合并并发刷新请求。 */
 function refreshAccessToken(): Promise<string> {
@@ -59,6 +60,19 @@ function clearLocalSession() {
   localStorage.removeItem(ACCESS_TOKEN_KEY)
   localStorage.removeItem(LEGACY_TOKEN_KEY)
   localStorage.removeItem(USER_KEY)
+  window.dispatchEvent(new Event('auth:session-expired'))
+
+  const loginUrl = new URL(
+    'login',
+    new URL(import.meta.env.BASE_URL, window.location.origin),
+  )
+  if (
+    !sessionExpirationHandled &&
+    window.location.pathname !== loginUrl.pathname
+  ) {
+    sessionExpirationHandled = true
+    window.location.replace(loginUrl.toString())
+  }
 }
 
 /** 登录、注册及令牌端点自身失败时不递归触发令牌刷新。 */
@@ -93,7 +107,6 @@ http.interceptors.response.use(
 
     if (config._refreshRetried) {
       clearLocalSession()
-      window.location.assign('/login')
       return Promise.reject(error.response?.data ?? error)
     }
 
@@ -102,14 +115,8 @@ http.interceptors.response.use(
       const accessToken = await refreshAccessToken()
       config.headers.Authorization = `Bearer ${accessToken}`
       return await http.request(config)
-    } catch (refreshError: unknown) {
-      if (
-        axios.isAxiosError(refreshError) &&
-        refreshError.response?.status === 401
-      ) {
-        clearLocalSession()
-        window.location.assign('/login')
-      }
+    } catch {
+      clearLocalSession()
       return Promise.reject(error.response?.data ?? error)
     }
   },

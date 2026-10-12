@@ -3,6 +3,7 @@ import {
   AuthenticationUser,
   AuthenticationState,
   EditableUserProfile,
+  SessionSettings,
   UserProfile,
   UsersRepository,
 } from '../../../mysql/repositories/users.repository.js';
@@ -22,6 +23,22 @@ export class UsersService {
     userId: string,
   ): Promise<AuthenticationState | null> {
     return this.usersRepository.findAuthenticationState(userId);
+  }
+
+  findSessionSettings(userId: string): Promise<SessionSettings | null> {
+    return this.usersRepository.findSessionSettings(userId);
+  }
+
+  updateSessionSettings(
+    userId: string,
+    operator: string,
+    settings: SessionSettings,
+  ): Promise<SessionSettings | null> {
+    return this.usersRepository.updateSessionSettings(
+      userId,
+      operator,
+      settings,
+    );
   }
 
   async updateLastLogin(

@@ -44,6 +44,8 @@ import { RegisterDto } from './dto/register.dto.js';
 import { SetPasswordDto } from './dto/set-password.dto.js';
 import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
 import { UsersService } from '../users/users.service.js';
+import { UpdateSessionSettingsDto } from './dto/update-session-settings.dto.js';
+import { normalizeHttpOrigin } from '../../../config/config.js';
 
 const OAUTH_PROVIDERS = ['gitee', 'github'] as const;
 const REFRESH_COOKIE = 'refresh_token';
@@ -395,6 +397,61 @@ export class AuthController {
     if (!profile) throw new NotFoundException('用户资料不存在');
     await this.audit(request, 'info', 'profile_updated', userId);
     return profile;
+  }
+
+  @Get('auth/session-settings')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '获取当前账号的多设备登录设置' })
+  @ApiResponse({
+    status: 200,
+    description: '当前账号的会话设置。',
+    schema: { example: { allowMultiLogin: false } },
+  })
+  @ApiResponse({ status: 401, description: '缺少或提供了无效的 Access Token。' })
+  @ApiResponse({ status: 404, description: '当前账号不存在。' })
+  async getSessionSettings(
+    @Req() request: Request & { user?: unknown },
+  ) {
+    const settings = await this.usersService.findSessionSettings(
+      authenticatedUserId(request.user),
+    );
+    if (!settings) throw new NotFoundException('当前账号不存在');
+    return settings;
+  }
+
+  @Patch('auth/session-settings')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: '修改当前账号的多设备登录设置',
+    description:
+      '关闭多设备登录后，下次登录会撤销其他设备的会话；已有会话在此之前保持有效。',
+  })
+  @ApiBody({ type: UpdateSessionSettingsDto })
+  @ApiResponse({
+    status: 200,
+    description: '更新后的会话设置。',
+    schema: { example: { allowMultiLogin: true } },
+  })
+  @ApiResponse({ status: 400, description: '多设备登录设置格式无效。' })
+  @ApiResponse({ status: 401, description: '缺少或提供了无效的 Access Token。' })
+  @ApiResponse({ status: 404, description: '当前账号不存在。' })
+  async updateSessionSettings(
+    @Body() dto: UpdateSessionSettingsDto,
+    @Req() request: Request & { user?: unknown },
+  ) {
+    const userId = authenticatedUserId(request.user);
+    const credentials = await this.usersService.findLocalCredentials(userId);
+    if (!credentials) throw new NotFoundException('当前账号不存在');
+    const settings = await this.usersService.updateSessionSettings(
+      userId,
+      credentials.username,
+      dto,
+    );
+    if (!settings) throw new NotFoundException('当前账号不存在');
+    await this.audit(request, 'info', 'session_settings_updated', userId);
+    return settings;
   }
 
   @Get('auth/oauth/providers')
@@ -787,11 +844,21 @@ export class AuthController {
 
   private assertAllowedOrigin(request: Request): void {
     const origin = request.headers.origin;
+    let normalizedOrigin: string;
+    try {
+      if (!origin) throw new Error('Missing origin');
+      normalizedOrigin = normalizeHttpOrigin(origin);
+    } catch {
+      throw new ForbiddenException('请求来源无效，请检查 CORS_ORIGINS 配置');
+    }
     if (
-      !origin ||
-      !this.config.getOrThrow<string[]>('app.corsOrigins').includes(origin)
+      !this.config
+        .getOrThrow<string[]>('app.corsOrigins')
+        .includes(normalizedOrigin)
     ) {
-      throw new ForbiddenException('请求来源无效');
+      throw new ForbiddenException(
+        '请求来源不在允许列表中，请将前端 Origin 添加到 CORS_ORIGINS',
+      );
     }
   }
 }

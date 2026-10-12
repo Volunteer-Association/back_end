@@ -7,6 +7,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpLoggingMiddleware } from './middleware/http-logging.middleware.js';
+import { LoggingService } from './modules/logging/logging.service.js';
 
 /** 创建 NestJS 应用并注册校验、跨域、日志、静态文件和 Swagger。 */
 async function bootstrap() {
@@ -24,6 +25,7 @@ async function bootstrap() {
   const config = app.get(ConfigService);
   const httpLogging = new HttpLoggingMiddleware(
     config.getOrThrow<string>('app.logging.directory'),
+    app.get(LoggingService),
   );
   app.use(httpLogging.use.bind(httpLogging));
   app.enableCors({

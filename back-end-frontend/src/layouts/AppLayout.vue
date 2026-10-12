@@ -19,14 +19,20 @@
       </nav>
       <div class="account">
         <el-avatar
-          :size="34"
+          class="account-avatar"
+          :size="32"
           :src="auth.user?.avatar || undefined"
           :alt="auth.user?.nickname || auth.user?.username || '用户头像'"
         >
           {{ (auth.user?.nickname || auth.user?.username || 'U').slice(0, 1) }}
         </el-avatar>
-        <span>{{ auth.user?.nickname || auth.user?.username }}</span>
-        <el-button text @click="signOut">退出登录</el-button>
+        <span class="account-name">{{
+          auth.user?.nickname || auth.user?.username
+        }}</span>
+        <el-button text aria-label="退出登录" @click="signOut">
+          <span class="logout-label">退出登录</span>
+          <span class="logout-short-label">退出</span>
+        </el-button>
       </div>
     </header>
     <main class="app-content">
@@ -56,10 +62,12 @@ async function signOut() {
 <style scoped>
 .app-layout {
   min-height: 100vh;
+  min-height: 100svh;
   background: #f4f7fb;
 }
 
 .app-header {
+  min-width: 0;
   min-height: 68px;
   display: flex;
   align-items: center;
@@ -80,10 +88,12 @@ async function signOut() {
 .app-nav {
   display: flex;
   flex: 1;
+  min-width: 0;
   gap: 20px;
 }
 
 .app-nav a {
+  flex-shrink: 0;
   color: #596579;
   text-decoration: none;
 }
@@ -94,13 +104,29 @@ async function signOut() {
 
 .account {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 10px;
   color: #596579;
   white-space: nowrap;
 }
 
+.account-avatar {
+  flex: none;
+}
+
+.account-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-short-label {
+  display: none;
+}
+
 .app-content {
+  width: 100%;
   max-width: 1440px;
   margin: 0 auto;
   padding: 28px 32px;
@@ -108,25 +134,81 @@ async function signOut() {
 
 @media (max-width: 800px) {
   .app-header {
-    align-items: flex-start;
+    align-items: center;
     flex-wrap: wrap;
-    gap: 14px;
-    padding: 16px;
+    gap: 12px 16px;
+    padding: 12px 16px 0;
   }
 
   .app-nav {
     order: 3;
     flex-basis: 100%;
-    flex-wrap: wrap;
-    gap: 12px 18px;
+    gap: 8px;
+    margin: 0 -16px;
+    padding: 0 16px 12px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .app-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .app-nav a {
+    padding: 6px 10px;
+    border-radius: 8px;
   }
 
   .account {
     margin-left: auto;
+    gap: 8px;
   }
 
   .app-content {
     padding: 20px 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    gap: 10px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .app-nav {
+    margin-right: -12px;
+    margin-left: -12px;
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .account {
+    gap: 6px;
+  }
+
+  .account-name {
+    max-width: 92px;
+    font-size: 13px;
+  }
+
+  .account :deep(.el-button) {
+    padding: 6px 4px;
+    font-size: 13px;
+  }
+
+  .logout-label {
+    display: none;
+  }
+
+  .logout-short-label {
+    display: inline;
+  }
+
+  .app-content {
+    padding: 16px 12px;
   }
 }
 </style>

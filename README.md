@@ -149,6 +149,8 @@ npm run start:dev
 
 本地注册使用邮箱验证码：前端先调用 `POST /auth/register/email-code`，再调用 `POST /auth/register` 提交用户名、邮箱、密码和验证码。注册时会将用户名同步为用户详情表中的默认昵称；成功注册时 `pms_user.last_login_ip`、`last_login_time` 记录来源 IP 与登录时间，后续成功登录会更新这两个字段。审计日志也会记录登录/注册请求 IP。验证码有效期由 `EMAIL_EXPIRES`（毫秒）控制，默认 5 分钟；邮箱重发间隔由 `EMAIL_VERIFICATION_COOLDOWN`（秒）控制，默认 60 秒；最多允许错误尝试 5 次。数据库只保存验证码的 HMAC 摘要，注册成功后验证码在事务中消费，并自动创建 `pms_user`、`users` 和 `user_roles` 记录，随后直接登录。发码接口对已注册邮箱返回相同的通用提示以减少邮箱枚举。SMTP 配置使用 `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_SECURE`、`EMAIL_USER`、`EMAIL_PASS` 和可选 `EMAIL_FROM`；SMTP 凭据要么全部配置，要么全部留空。未配置时邮件验证码接口会明确报错，不影响已有登录功能。
 
+邮箱验证码接口若返回 403，请检查浏览器开发者工具中该请求的 `Origin` 请求头，并将其完整源地址（仅协议、主机和端口，例如 `https://app.example.com`）加入后端 `CORS_ORIGINS`，逗号分隔且不要带路径。修改后重启后端。此接口会拒绝缺少 Origin 或未列入白名单的请求；CORS 配置允许末尾斜杠，但不会忽略协议、域名或端口差异。
+
 雪花 ID 使用 `SNOWFLAKE_WORKER_ID`（0–1023）区分节点；开发环境默认值为 `0`，生产环境必须显式配置。连接同一数据库的每个并行后端实例必须使用唯一节点号，否则无法保证跨进程 ID 唯一。生成的 ID 不会过期，作为账户标识可长期使用；雪花时间戳位有固定算法范围，当前纪元设置支持至约 2093 年。
 
 ### 第三方登录与本地用户关联

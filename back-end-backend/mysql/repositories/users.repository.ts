@@ -17,6 +17,10 @@ export interface UserProfile {
   sex: number | null;
 }
 
+export interface SessionSettings {
+  allowMultiLogin: boolean;
+}
+
 export type AuthenticationUser = Pick<
   UserEntity,
   | 'userId'
@@ -64,6 +68,32 @@ export class UsersRepository {
       select: { status: true, sessionVersion: true },
       where: { userId },
     });
+  }
+
+  async findSessionSettings(userId: string): Promise<SessionSettings | null> {
+    const user = await this.repository.findOne({
+      select: { isAllowMulti: true },
+      where: { userId },
+    });
+    return user
+      ? { allowMultiLogin: Number(user.isAllowMulti) === 1 }
+      : null;
+  }
+
+  async updateSessionSettings(
+    userId: string,
+    operator: string,
+    settings: SessionSettings,
+  ): Promise<SessionSettings | null> {
+    const result = await this.repository.update(
+      { userId },
+      {
+        isAllowMulti: settings.allowMultiLogin ? 1 : 0,
+        operator,
+        operatorId: userId,
+      },
+    );
+    return result.affected ? this.findSessionSettings(userId) : null;
   }
 
   /** 每次成功登录后更新最后登录时间和客户端 IP。 */

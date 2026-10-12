@@ -2,6 +2,27 @@ import { registerAs } from '@nestjs/config';
 import { resolve } from 'node:path';
 type Environment = Record<string, string | undefined>;
 
+/** Normalize an HTTP(S) origin while rejecting paths and other URL components. */
+export function normalizeHttpOrigin(value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new Error('CORS_ORIGINS must contain valid HTTP(S) origins');
+  }
+  if (
+    !['http:', 'https:'].includes(parsed.protocol) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== '/' ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error('CORS_ORIGINS must contain valid HTTP(S) origins');
+  }
+  return parsed.origin;
+}
+
 /** 读取非空环境变量；未设置或全为空白时使用默认值。 */
 function value(
   env: Environment,
@@ -56,7 +77,10 @@ export function createAppConfiguration(env: Environment = process.env) {
         'http://127.0.0.1:3000',
       ];
   const corsOrigins = env.CORS_ORIGINS?.trim()
-    ? env.CORS_ORIGINS.split(',').map((origin) => origin.trim()).filter(Boolean)
+    ? env.CORS_ORIGINS.split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .map(normalizeHttpOrigin)
     : defaultCorsOrigins;
   const prefix = value(env, 'PREFIX', value(env, 'SERVER_BASE_URL', '/static/file'));
 

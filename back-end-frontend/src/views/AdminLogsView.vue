@@ -131,4 +131,21 @@ onMounted(loadLogs)
   justify-content: flex-end;
   margin-top: 20px;
 }
+
+@media (max-width: 600px) {
+  .page-heading {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .page-heading :deep(.el-select) {
+    width: 100%;
+  }
+
+  .pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+}
 </style>

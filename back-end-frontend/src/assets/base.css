@@ -58,8 +58,21 @@
   font-weight: normal;
 }
 
+html,
+body,
+#app {
+  width: 100%;
+  min-width: 320px;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   min-height: 100vh;
+  min-height: 100svh;
   color: var(--color-text);
   background: var(--color-background);
   transition:

@@ -1,6 +1,7 @@
 import {
   createAppConfiguration,
   getEnvironmentFilePaths,
+  normalizeHttpOrigin,
   validateEnvironment,
 } from './config.js';
 
@@ -39,6 +40,31 @@ describe('application configuration', () => {
     expect(config.server.port).toBe(3000);
     expect(config.oauth.gitee.callbackUrl).toContain(':3000/');
     expect(config.oauth.github.callbackUrl).toContain(':3000/');
+  });
+
+  it('normalizes configured CORS origins and tolerates trailing slashes', () => {
+    const config = createAppConfiguration({
+      CORS_ORIGINS:
+        ' https://app.example.test/ ,http://localhost:5173',
+    });
+
+    expect(config.corsOrigins).toEqual([
+      'https://app.example.test',
+      'http://localhost:5173',
+    ]);
+    expect(normalizeHttpOrigin('HTTPS://APP.EXAMPLE.TEST:443')).toBe(
+      'https://app.example.test',
+    );
+  });
+
+  it.each([
+    'https://app.example.test/path',
+    'javascript:alert(1)',
+    'https://user:pass@app.example.test',
+  ])('rejects a non-origin CORS entry: %s', (origin) => {
+    expect(() => normalizeHttpOrigin(origin)).toThrow(
+      'CORS_ORIGINS must contain valid HTTP(S) origins',
+    );
   });
 
   it('uses a configurable directory for HTTP log files', () => {

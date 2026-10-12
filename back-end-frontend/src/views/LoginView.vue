@@ -388,4 +388,19 @@ async function sendCode() {
   flex: 1;
   margin: 0;
 }
+
+@media (max-width: 480px) {
+  .login-page {
+    min-height: 100svh;
+    padding: 16px;
+  }
+
+  .login-card {
+    border-radius: 12px;
+  }
+
+  .login-heading h1 {
+    font-size: 23px;
+  }
+}
 </style>

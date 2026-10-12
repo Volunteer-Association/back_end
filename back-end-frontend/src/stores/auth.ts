@@ -77,16 +77,21 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.setItem(USER_KEY, JSON.stringify(user.value))
   }
 
+  /** 清除已失效的会话，不再向服务端发起注销请求。 */
+  function clearSession() {
+    token.value = ''
+    user.value = null
+    localStorage.removeItem(TOKEN_KEY)
+    localStorage.removeItem(LEGACY_TOKEN_KEY)
+    localStorage.removeItem(USER_KEY)
+  }
+
   /** 即使注销请求失败，也清除浏览器中的本地会话。 */
   async function logout() {
     try {
       await logoutSession()
     } finally {
-      token.value = ''
-      user.value = null
-      localStorage.removeItem(TOKEN_KEY)
-      localStorage.removeItem(LEGACY_TOKEN_KEY)
-      localStorage.removeItem(USER_KEY)
+      clearSession()
     }
   }
 
@@ -99,6 +104,7 @@ export const useAuthStore = defineStore('auth', () => {
     completeOAuth,
     updateUsername,
     updateProfile,
+    clearSession,
     logout,
   }
 })

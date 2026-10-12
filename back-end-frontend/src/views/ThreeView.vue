@@ -93,19 +93,13 @@ onUnmounted(() => {
     cleanup()
 })
 </script>
-<style lang="css">
-body {
-    all: unset;
-}
-
-#app {
-    all: unset;
-}
-
+<style scoped lang="css">
 .three-container {
     width: 100%;
-    height: 100vh;
-    overflow: hidden; 
+    height: min(70vh, 640px);
+    height: min(70dvh, 640px);
+    min-height: 320px;
+    overflow: hidden;
     /** 解决画布不居中 */
     display: flex;
     justify-content: center;
@@ -114,6 +108,14 @@ body {
 }
 .three-container canvas {
     display: block;
+    max-width: 100%;
 }
 
+@media (max-width: 600px) {
+    .three-container {
+        height: 60vh;
+        height: 60dvh;
+        min-height: 280px;
+    }
+}
 </style>

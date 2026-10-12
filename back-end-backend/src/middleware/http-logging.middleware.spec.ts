@@ -14,10 +14,13 @@ describe('HttpLoggingMiddleware', () => {
   let logDirectory: string;
   let setHeader: jest.Mock;
   let next: jest.Mock;
+  const loggingService = {
+    audit: jest.fn(),
+  };
 
   beforeEach(async () => {
     logDirectory = await mkdtemp(join(tmpdir(), 'http-logging-'));
-    middleware = new HttpLoggingMiddleware(logDirectory);
+    middleware = new HttpLoggingMiddleware(logDirectory, loggingService);
     responseEvents = new EventEmitter();
     statusCode = 200;
     setHeader = jest.fn();
@@ -26,6 +29,7 @@ describe('HttpLoggingMiddleware', () => {
 
   afterEach(async () => {
     jest.restoreAllMocks();
+    jest.clearAllMocks();
     await rm(logDirectory, { recursive: true, force: true });
   });
 
@@ -56,6 +60,15 @@ describe('HttpLoggingMiddleware', () => {
     responseEvents.emit('finish');
 
     const logged = String(logger.mock.calls[0][0]);
+    const loggedEntry = JSON.parse(logged) as {
+      level: string;
+      message: string;
+    };
+    expect(Object.keys(JSON.parse(logged) as Record<string, unknown>).at(-1)).toBe(
+      'timestamp',
+    );
+    expect(loggedEntry.level).toBe('info');
+    expect(loggedEntry.message).toContain('HTTP GET /users returned 200');
     expect(logged).toContain('"path":"/users"');
     expect(logged).not.toContain('access_token');
     expect(logged).not.toContain('secret');
@@ -85,6 +98,12 @@ describe('HttpLoggingMiddleware', () => {
     statusCode = 404;
     responseEvents.emit('finish');
     expect(warn).toHaveBeenCalledTimes(1);
+    expect(loggingService.audit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        level: 'warn',
+        message: expect.stringContaining('returned 404'),
+      }),
+    );
 
     responseEvents = new EventEmitter();
     middleware.use(
@@ -95,6 +114,61 @@ describe('HttpLoggingMiddleware', () => {
     statusCode = 500;
     responseEvents.emit('finish');
     expect(error).toHaveBeenCalledTimes(1);
+    expect(loggingService.audit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        level: 'error',
+        message: expect.stringContaining('returned 500'),
+      }),
+    );
     await new Promise((resolve) => setTimeout(resolve, 20));
+    const date = new Date().toISOString().slice(0, 10);
+    const httpLog = await readFile(
+      join(logDirectory, `http-${date}.log`),
+      'utf8',
+    );
+    const errorLog = await readFile(
+      join(logDirectory, `error-${date}.log`),
+      'utf8',
+    );
+    const httpEntries = httpLog
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as {
+        level: string;
+        status: number;
+        message: string;
+        timestamp: string;
+      });
+    const errorEntries = errorLog
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as {
+        level: string;
+        status: number;
+        message: string;
+        timestamp: string;
+      });
+    expect(httpEntries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          level: 'warn',
+          status: 404,
+          message: expect.stringContaining('HTTP GET /resource returned 404'),
+        }),
+        expect.objectContaining({
+          level: 'error',
+          status: 500,
+          message: expect.stringContaining('HTTP POST /resource returned 500'),
+        }),
+      ]),
+    );
+    expect(errorEntries).toEqual([
+      expect.objectContaining({
+        level: 'error',
+        status: 500,
+        message: expect.stringContaining('HTTP POST /resource returned 500'),
+      }),
+    ]);
+    expect(httpEntries.every((entry) => entry.timestamp)).toBe(true);
   });
 });

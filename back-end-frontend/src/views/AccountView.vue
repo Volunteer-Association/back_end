@@ -104,6 +104,46 @@
       </el-form>
     </el-card>
 
+    <el-card class="session-card" shadow="never">
+      <template #header>
+        <div>
+          <h2>登录设备管理</h2>
+          <p>控制当前账号是否可以在多个设备上同时保持登录。</p>
+        </div>
+      </template>
+      <el-skeleton v-if="sessionSettingsLoading" :rows="1" animated />
+      <el-alert
+        v-else-if="sessionSettingsError"
+        type="error"
+        :closable="false"
+        :title="sessionSettingsError"
+      >
+        <el-button text type="primary" @click="loadSessionSettings">
+          重新读取
+        </el-button>
+      </el-alert>
+      <div v-else class="session-setting">
+        <div>
+          <strong>允许多设备同时登录</strong>
+          <p>
+            {{
+              sessionSettings.allowMultiLogin
+                ? '开启后，多个设备可以同时保持登录。'
+                : '关闭后，下次登录会使其他设备退出；现有会话暂时不受影响。'
+            }}
+          </p>
+        </div>
+        <el-switch
+          v-model="sessionSettings.allowMultiLogin"
+          :loading="savingSessionSettings"
+          :disabled="savingSessionSettings"
+          active-text="允许"
+          inactive-text="禁止"
+          @change="saveSessionSettings"
+        />
+      </div>
+    </el-card>
+
     <el-card class="password-card" shadow="never">
       <template #header>
         <div>
@@ -214,10 +254,12 @@ import {
   getLinkedOAuthProviders,
   getOAuthProviders,
   getPasswordStatus,
+  getSessionSettings,
   getUserProfile,
   setLocalPassword,
   startOAuthLink,
   updateUserProfile,
+  updateSessionSettings,
   type OAuthProvider,
 } from '@/api/modules/auth'
 
@@ -235,6 +277,10 @@ const savingPassword = ref(false)
 const profileLoading = ref(true)
 const savingProfile = ref(false)
 const profileError = ref('')
+const sessionSettingsLoading = ref(true)
+const sessionSettingsError = ref('')
+const savingSessionSettings = ref(false)
+const sessionSettings = reactive({ allowMultiLogin: false })
 const profile = reactive({
   email: '',
   nickname: '',
@@ -285,7 +331,7 @@ function providerName(provider: OAuthProvider) {
 }
 
 onMounted(async () => {
-  await loadProfile()
+  await Promise.all([loadProfile(), loadSessionSettings()])
   try {
     const [available, linked] = await Promise.all([
       getOAuthProviders(),
@@ -300,6 +346,51 @@ onMounted(async () => {
   }
   await loadPasswordStatus()
 })
+
+async function loadSessionSettings() {
+  sessionSettingsLoading.value = true
+  sessionSettingsError.value = ''
+  try {
+    const result = await getSessionSettings()
+    sessionSettings.allowMultiLogin = result.allowMultiLogin
+  } catch (error: unknown) {
+    sessionSettingsError.value =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+        ? `无法读取登录设备设置：${error.message}`
+        : '无法读取登录设备设置，请稍后重试。'
+  } finally {
+    sessionSettingsLoading.value = false
+  }
+}
+
+async function saveSessionSettings(allowMultiLogin: boolean | string | number) {
+  if (savingSessionSettings.value) return
+  const nextValue = allowMultiLogin === true
+  const previousValue = !nextValue
+  savingSessionSettings.value = true
+  try {
+    const result = await updateSessionSettings({
+      allowMultiLogin: nextValue,
+    })
+    sessionSettings.allowMultiLogin = result.allowMultiLogin
+    ElMessage.success('登录设备设置已保存')
+  } catch (error: unknown) {
+    sessionSettings.allowMultiLogin = previousValue
+    const message =
+      typeof error === 'object' &&
+      error !== null &&
+      'message' in error &&
+      typeof error.message === 'string'
+        ? error.message
+        : '登录设备设置保存失败，请重试'
+    ElMessage.error(message)
+  } finally {
+    savingSessionSettings.value = false
+  }
+}
 
 async function loadProfile() {
   profileLoading.value = true
@@ -487,6 +578,22 @@ async function linkProvider(provider: OAuthProvider) {
   width: 100%;
 }
 
+.session-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.session-setting strong {
+  color: #17233d;
+}
+
+.session-setting p {
+  margin: 6px 0 0;
+  color: #7a8598;
+}
+
 .password-card h2 {
   margin: 0;
   color: #17233d;
@@ -525,6 +632,10 @@ async function linkProvider(provider: OAuthProvider) {
   .provider-row {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .session-setting {
+    align-items: flex-start;
   }
 }
 </style>
