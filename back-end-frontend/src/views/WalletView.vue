@@ -20,7 +20,11 @@
         <strong>充值记录</strong>
       </template>
       <el-table :data="recharges" stripe>
-        <el-table-column prop="id" label="单号" width="180" />
+        <el-table-column label="充值单号" width="180">
+          <template #default="{ row }">
+            <code class="mono">{{ row.id }}</code>
+          </template>
+        </el-table-column>
         <el-table-column label="金额" width="120">
           <template #default="{ row }">
             <strong>¥{{ (row.amountCents / 100).toFixed(2) }}</strong>
@@ -50,27 +54,38 @@
         <strong>余额流水</strong>
       </template>
       <el-table :data="txns" stripe>
-        <el-table-column label="类型" width="100">
+        <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag size="small">{{ txnTypeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="变动" width="140">
+        <el-table-column label="变动" width="120">
           <template #default="{ row }">
             <strong :class="row.amountCents >= 0 ? 'amount-income' : 'amount-expense'">
               {{ row.amountCents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.amountCents) / 100).toFixed(2) }}
             </strong>
           </template>
         </el-table-column>
-        <el-table-column label="变动后余额" width="140">
+        <el-table-column label="余额" width="110">
           <template #default="{ row }">
-            ¥{{ (row.balanceAfterCents / 100).toFixed(2) }}
+            <span class="balance-after">¥{{ (row.balanceAfterCents / 100).toFixed(2) }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="note" label="说明" min-width="180">
           <template #default="{ row }">{{ row.note || '—' }}</template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="180" />
+        <el-table-column label="流水号" width="160">
+          <template #default="{ row }">
+            <code class="mono">{{ row.id }}</code>
+          </template>
+        </el-table-column>
+        <el-table-column label="关联单号" width="160">
+          <template #default="{ row }">
+            <code v-if="row.refId" class="mono">{{ row.refId }}</code>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="时间" width="160" />
       </el-table>
     </el-card>
 
@@ -352,6 +367,24 @@ onMounted(() => void reload())
 
 .amount-expense {
   color: #e05b5b;
+}
+
+.balance-after {
+  color: #7a8598;
+  font-variant-numeric: tabular-nums;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #475669;
+  background: #f4f7fb;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.muted {
+  color: #c0c6d0;
 }
 
 .recharge-form {

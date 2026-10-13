@@ -83,27 +83,37 @@
       </el-form>
 
       <el-table :data="txns" stripe v-loading="txnLoading">
-        <el-table-column prop="id" label="流水号" width="180" />
+        <el-table-column prop="id" label="流水号" width="160">
+          <template #default="{ row }">
+            <code class="mono">{{ row.id }}</code>
+          </template>
+        </el-table-column>
         <el-table-column prop="userId" label="用户" width="140" />
-        <el-table-column label="类型" width="100">
+        <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag size="small">{{ typeLabel(row.type) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="变动" width="130">
+        <el-table-column label="变动" width="120">
           <template #default="{ row }">
             <strong :class="row.amountCents >= 0 ? 'amount-income' : 'amount-expense'">
               {{ row.amountCents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.amountCents) / 100).toFixed(2) }}
             </strong>
           </template>
         </el-table-column>
-        <el-table-column label="变动后余额" width="130">
+        <el-table-column label="余额" width="110">
           <template #default="{ row }">¥{{ (row.balanceAfterCents / 100).toFixed(2) }}</template>
         </el-table-column>
         <el-table-column prop="note" label="说明" min-width="200">
           <template #default="{ row }">{{ row.note || '—' }}</template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="180" />
+        <el-table-column label="关联单号" width="160">
+          <template #default="{ row }">
+            <code v-if="row.refId" class="mono">{{ row.refId }}</code>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createdAt" label="时间" width="160" />
       </el-table>
 
       <el-pagination
@@ -238,4 +248,17 @@ onMounted(() => {
 
 .amount-income { color: #22a06b; }
 .amount-expense { color: #e05b5b; }
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #475669;
+  background: #f4f7fb;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.muted {
+  color: #c0c6d0;
+}
 </style>
