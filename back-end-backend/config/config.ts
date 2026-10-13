@@ -162,6 +162,23 @@ export function createAppConfiguration(env: Environment = process.env) {
       bucket: value(env, 'OSS_BUCKET', ''),
       authorizationV4: true,
     },
+    upload: {
+      // 单文件上限（字节），默认 500 KiB，与 interceptor 保持一致。
+      maxSizeBytes: integer(
+        env,
+        'UPLOAD_MAX_SIZE',
+        500 * 1024,
+        1,
+        100 * 1024 * 1024,
+      ),
+      // 单次请求最多上传文件数；超过则拒绝。
+      maxCount: integer(env, 'UPLOAD_MAX_COUNT', 5, 1, 20),
+      // 允许的小写扩展名白名单；逗号分隔，空表示不限制。
+      allowedExtensions: value(env, 'UPLOAD_ALLOWED_EXTENSIONS', '')
+        .split(',')
+        .map((ext) => ext.trim().toLowerCase().replace(/^\./, ''))
+        .filter(Boolean),
+    },
     email: {
       host: value(env, 'EMAIL_HOST', ''),
       port: integer(env, 'EMAIL_PORT', 465, 1, 65535),

@@ -83,8 +83,8 @@ export class SystemController {
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
   @UseInterceptors(
-    FilesInterceptor('files', undefined, {
-      limits: { fileSize: 500 * 1024 },
+    FilesInterceptor('files', 10, {
+      limits: { fileSize: 500 * 1024, files: 10 },
     }),
   )
   @ApiOperation({

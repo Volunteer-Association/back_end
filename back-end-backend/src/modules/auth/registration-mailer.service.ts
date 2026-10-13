@@ -4,24 +4,43 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer from 'nodemailer';
+import nodemailer, { type Transporter } from 'nodemailer';
+
+interface MailConfig {
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  from: string;
+}
 
 @Injectable()
 export class RegistrationMailerService {
   private readonly logger = new Logger(RegistrationMailerService.name);
 
+  /** 懒加载缓存 SMTP transporter，避免每封邮件都新建 TCP+TLS 连接。 */
+  private transporter: Transporter | null = null;
+
   constructor(private readonly config: ConfigService) {}
 
   ensureConfigured(): void {
-    const mail = this.config.getOrThrow<{
-      host: string;
-      user: string;
-      password: string;
-      from: string;
-    }>('app.email');
+    const mail = this.config.getOrThrow<MailConfig>('app.email');
     if (!mail.host || !mail.user || !mail.password || !mail.from) {
       throw new ServiceUnavailableException('邮箱服务尚未配置');
     }
+  }
+
+  private getTransporter(mail: MailConfig): Transporter {
+    if (!this.transporter) {
+      this.transporter = nodemailer.createTransport({
+        host: mail.host,
+        port: mail.port,
+        secure: mail.secure,
+        auth: { user: mail.user, pass: mail.password },
+      });
+    }
+    return this.transporter;
   }
 
   async sendVerificationCode(
@@ -29,22 +48,10 @@ export class RegistrationMailerService {
     code: string,
     expiresMs: number,
   ): Promise<void> {
-    const mail = this.config.getOrThrow<{
-      host: string;
-      port: number;
-      secure: boolean;
-      user: string;
-      password: string;
-      from: string;
-    }>('app.email');
+    const mail = this.config.getOrThrow<MailConfig>('app.email');
     this.ensureConfigured();
 
-    const transport = nodemailer.createTransport({
-      host: mail.host,
-      port: mail.port,
-      secure: mail.secure,
-      auth: { user: mail.user, pass: mail.password },
-    });
+    const transport = this.getTransporter(mail);
 
     try {
       await transport.sendMail({
@@ -59,8 +66,6 @@ export class RegistrationMailerService {
         `注册验证码邮件发送失败 [${error instanceof Error ? error.name : 'UnknownError'}]`,
       );
       throw new ServiceUnavailableException('验证码邮件发送失败，请稍后重试');
-    } finally {
-      transport.close();
     }
   }
 }
