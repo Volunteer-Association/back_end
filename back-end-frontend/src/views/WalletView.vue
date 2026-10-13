@@ -1,12 +1,13 @@
 <template>
   <section class="wallet-page">
-    <div class="page-heading">
-      <div>
-        <h1>我的钱包</h1>
-        <p>账户余额、充值申请与消费流水。</p>
-      </div>
-      <el-button type="primary" @click="openRecharge">申请充值</el-button>
-    </div>
+    <PageHeader
+      title="我的钱包"
+      description="账户余额、充值申请与消费流水。"
+    >
+      <template #actions>
+        <el-button type="primary" @click="openRecharge">申请充值</el-button>
+      </template>
+    </PageHeader>
 
     <el-card shadow="never" class="balance-card">
       <span class="balance-label">账户余额</span>
@@ -121,6 +122,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import PageHeader from '@/components/PageHeader.vue'
 import {
   getBalance,
   listMyRecharges,
@@ -230,23 +232,6 @@ onMounted(() => void reload())
 .wallet-page {
   display: grid;
   gap: 20px;
-}
-
-.page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-h1 {
-  color: #17233d;
-  font-size: 24px;
-}
-
-.page-heading p {
-  margin-top: 4px;
-  color: #8590a3;
-  font-size: 14px;
 }
 
 .balance-card :deep(.el-card__body) {

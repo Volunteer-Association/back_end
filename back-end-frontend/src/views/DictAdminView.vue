@@ -1,12 +1,13 @@
 <template>
   <section class="dict-page">
-    <div class="page-heading">
-      <div>
-        <h1>数据字典管理</h1>
-        <p>统一维护业务可选项，如账单分类。修改后即时生效，无需发版。</p>
-      </div>
-      <el-button type="primary" @click="openCreate">新建字典项</el-button>
-    </div>
+    <PageHeader
+      title="数据字典管理"
+      description="统一维护业务可选项，如账单分类。修改后即时生效，无需发版。"
+    >
+      <template #actions>
+        <el-button type="primary" @click="openCreate">新建字典项</el-button>
+      </template>
+    </PageHeader>
 
     <el-card shadow="never">
       <div class="filters">
@@ -75,6 +76,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import PageHeader from '@/components/PageHeader.vue'
 import {
   createDictItem,
   deleteDictItem,
@@ -194,25 +196,6 @@ onMounted(() => void reload())
 .dict-page {
   display: grid;
   gap: 20px;
-}
-
-.page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-h1 {
-  color: #17233d;
-  font-size: 24px;
-  font-weight: 700;
-}
-
-.page-heading p {
-  margin-top: 4px;
-  color: #8590a3;
-  font-size: 14px;
 }
 
 .filters {

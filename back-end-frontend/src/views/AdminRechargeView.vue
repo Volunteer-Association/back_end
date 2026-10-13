@@ -1,17 +1,18 @@
 <template>
   <section class="recharge-admin-page">
-    <div class="page-heading">
-      <div>
-        <h1>充值审核</h1>
-        <p>核对用户线下转账后批准到账，余额自动入账。</p>
-      </div>
-      <el-radio-group v-model="statusFilter" @change="reload">
-        <el-radio-button value="">全部</el-radio-button>
-        <el-radio-button value="pending">待审核</el-radio-button>
-        <el-radio-button value="approved">已到账</el-radio-button>
-        <el-radio-button value="rejected">已驳回</el-radio-button>
-      </el-radio-group>
-    </div>
+    <PageHeader
+      title="充值审核"
+      description="核对用户线下转账后批准到账，余额自动入账。"
+    >
+      <template #actions>
+        <el-radio-group v-model="statusFilter" @change="reload">
+          <el-radio-button value="">全部</el-radio-button>
+          <el-radio-button value="pending">待审核</el-radio-button>
+          <el-radio-button value="approved">已到账</el-radio-button>
+          <el-radio-button value="rejected">已驳回</el-radio-button>
+        </el-radio-group>
+      </template>
+    </PageHeader>
 
     <el-card shadow="never">
       <el-table v-loading="loading" :data="orders" stripe>
@@ -53,6 +54,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import PageHeader from '@/components/PageHeader.vue'
 import {
   adminApproveRecharge,
   adminListRecharges,
@@ -142,22 +144,5 @@ onMounted(() => void reload())
 .recharge-admin-page {
   display: grid;
   gap: 20px;
-}
-
-.page-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-h1 {
-  color: #17233d;
-  font-size: 24px;
-}
-
-.page-heading p {
-  margin-top: 4px;
-  color: #8590a3;
-  font-size: 14px;
 }
 </style>
