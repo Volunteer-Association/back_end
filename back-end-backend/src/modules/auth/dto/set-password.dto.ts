@@ -25,21 +25,21 @@ export class SetPasswordDto {
     description: '已设置本地密码的账号在修改密码时必填；首次设置密码时省略。',
     example: 'CurrentPass123!',
     required: false,
-    maxLength: 72,
+    maxLength: 128,
   })
   @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  currentPassword?: string;
+
   @ApiProperty({
-    description: '要设置的新密码，长度 8-72 位。',
+    description: '要设置的新密码，至少 12 位，最多 72 个 UTF-8 字节。',
     example: 'NewStrongPass123!',
-    minLength: 8,
+    minLength: 12,
     maxLength: 72,
   })
   @IsString()
-  @MaxLength(72)
-  currentPassword?: string;
-
-  @IsString()
-  @MinLength(8)
+  @MinLength(12)
   @MaxLength(72)
   newPassword: string;
 }

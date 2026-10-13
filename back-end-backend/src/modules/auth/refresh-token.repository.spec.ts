@@ -101,4 +101,19 @@ describe('RefreshTokenRepository.create', () => {
 
     expect(tokens.save).not.toHaveBeenCalled();
   });
+
+  it('does not issue a session from credentials read before a password change', async () => {
+    userQueryBuilder.getOne.mockResolvedValue({
+      status: 'active',
+      isAllowMulti: 0,
+      sessionVersion: 5,
+    });
+
+    await expect(
+      repository.create('new-refresh-token', 'user-1', 4),
+    ).resolves.toBeNull();
+
+    expect(users.update).not.toHaveBeenCalled();
+    expect(tokens.save).not.toHaveBeenCalled();
+  });
 });

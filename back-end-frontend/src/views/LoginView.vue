@@ -104,7 +104,7 @@
           <el-input
             v-model="registerForm.password"
             autocomplete="new-password"
-            placeholder="请输入 8-72 位密码"
+            placeholder="至少 12 位，最多 72 个 UTF-8 字节"
             size="large"
             show-password
             type="password"
@@ -191,7 +191,7 @@ const registerRules: FormRules = {
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 8, max: 72, message: '密码长度需为 8-72 位', trigger: 'blur' },
+    { min: 12, max: 72, message: '密码至少 12 位，最多 72 个字符', trigger: 'blur' },
   ],
 }
 

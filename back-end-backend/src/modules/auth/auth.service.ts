@@ -13,6 +13,11 @@ import { mapEnabledStatus } from '../../../mysql/entities/user.entity.js';
 import { UsersService } from '../users/users.service.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from '../../../config/auth.constants.js';
 import { QueryFailedError } from 'typeorm';
+import {
+  assertBcryptPasswordLength,
+  BCRYPT_MAX_PASSWORD_BYTES,
+  BCRYPT_ROUNDS,
+} from './password-policy.js';
 
 const GENERATED_OAUTH_USERNAME = /^(?:gitee|github)_[a-f0-9]{40}$/;
 
@@ -47,6 +52,8 @@ type SessionUser = Pick<
 @Injectable()
 /** 处理本地认证、凭证设置及 Access/Refresh Token 会话生命周期。 */
 export class AuthService {
+  private dummyPasswordHash: Promise<string> | undefined;
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
@@ -54,10 +61,18 @@ export class AuthService {
   ) {}
 
   async login(username: string, password: string, ipAddress?: string) {
+    const passwordTooLong =
+      Buffer.byteLength(password, 'utf8') > BCRYPT_MAX_PASSWORD_BYTES;
     const user = await this.usersService.findByUsernameForAuthentication(
       username,
     );
-    if (!user || mapEnabledStatus(user.status) !== 'active' || !user.password) {
+    if (
+      !user ||
+      mapEnabledStatus(user.status) !== 'active' ||
+      !user.password ||
+      passwordTooLong
+    ) {
+      await bcrypt.compare(password, await this.getDummyPasswordHash());
       throw new UnauthorizedException('用户名或密码错误');
     }
 
@@ -67,7 +82,15 @@ export class AuthService {
     }
 
     await this.usersService.updateLastLogin(user, ipAddress);
-    return this.createSession(user);
+    return this.createSession(user, user.sessionVersion);
+  }
+
+  private getDummyPasswordHash(): Promise<string> {
+    this.dummyPasswordHash ??= bcrypt.hash(
+      randomBytes(32).toString('base64url'),
+      BCRYPT_ROUNDS,
+    );
+    return this.dummyPasswordHash;
   }
 
   async hasLocalPassword(userId: string): Promise<boolean> {
@@ -101,11 +124,13 @@ export class AuthService {
     const credentials = await this.usersService.findLocalCredentials(userId);
     if (!credentials) throw new UnauthorizedException('当前账号不存在');
     const currentHash = credentials.password;
+    assertBcryptPasswordLength(newPassword);
     if (currentHash) {
-      if (
-        !currentPassword ||
-        !(await bcrypt.compare(currentPassword, currentHash))
-      ) {
+      if (!currentPassword) {
+        throw new UnauthorizedException('当前密码不正确');
+      }
+      assertBcryptPasswordLength(currentPassword);
+      if (!(await bcrypt.compare(currentPassword, currentHash))) {
         throw new UnauthorizedException('当前密码不正确');
       }
     } else if (currentPassword) {
@@ -130,7 +155,7 @@ export class AuthService {
       await this.usersService.setLocalCredentials(
         userId,
         username,
-        await bcrypt.hash(newPassword, 12),
+        await bcrypt.hash(newPassword, BCRYPT_ROUNDS),
         username,
       );
     } catch (error: unknown) {
@@ -172,11 +197,15 @@ export class AuthService {
     await this.refreshTokens.revoke(refreshToken);
   }
 
-  async createSession(user: SessionUser): Promise<AuthSession> {
+  async createSession(
+    user: SessionUser,
+    expectedSessionVersion?: number,
+  ): Promise<AuthSession> {
     const refreshToken = randomBytes(32).toString('base64url');
     const sessionVersion = await this.refreshTokens.create(
       refreshToken,
       user.userId,
+      expectedSessionVersion,
     );
     if (sessionVersion === null) {
       throw new UnauthorizedException('该账号当前不可登录');

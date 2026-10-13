@@ -5,6 +5,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  HttpException,
   Logger,
   NotFoundException,
   Patch,
@@ -47,6 +48,7 @@ import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
 import { UsersService } from '../users/users.service.js';
 import { UpdateSessionSettingsDto } from './dto/update-session-settings.dto.js';
 import { normalizeHttpOrigin } from '../../../config/config.js';
+import { LoginAttemptService } from './login-attempt.service.js';
 
 const OAUTH_PROVIDERS = ['gitee', 'github'] as const;
 const REFRESH_COOKIE = 'refresh_token';
@@ -107,6 +109,7 @@ export class AuthController {
     private readonly registrationService: RegistrationService,
     private readonly loggingService: LoggingService,
     private readonly usersService: UsersService,
+    private readonly loginAttempts: LoginAttemptService,
   ) {}
 
   @Post('auth/register/email-code')
@@ -185,11 +188,22 @@ export class AuthController {
     schema: { example: SESSION_RESPONSE_EXAMPLE },
   })
   @ApiResponse({ status: 401, description: '账号或密码不正确，或账号不可用。' })
+  @ApiResponse({ status: 429, description: '登录失败次数过多，请稍后重试。' })
   async login(
     @Body() loginDto: LoginDto,
     @Req() request: Request,
     @Res() response: Response,
   ) {
+    const retryAfter = await this.loginAttempts.getRetryAfterSeconds(
+      loginDto.username,
+      request.ip || 'unknown',
+    );
+    if (retryAfter > 0) {
+      response.setHeader('Retry-After', String(retryAfter));
+      await this.audit(request, 'warn', 'password_login_rate_limited');
+      throw new HttpException('登录尝试过于频繁，请稍后重试', 429);
+    }
+
     let session: AuthSession;
     try {
       session = await this.authService.login(
@@ -198,6 +212,12 @@ export class AuthController {
         request.ip,
       );
     } catch (error: unknown) {
+      if (error instanceof UnauthorizedException) {
+        await this.loginAttempts.recordFailure(
+          loginDto.username,
+          request.ip || 'unknown',
+        );
+      }
       await this.audit(request, 'warn', 'password_login_failed');
       throw error;
     }
@@ -304,6 +324,7 @@ export class AuthController {
   async setPassword(
     @Body() dto: SetPasswordDto,
     @Req() request: Request & { user?: unknown },
+    @Res() response: Response,
   ) {
     const userId = authenticatedUserId(request.user);
     const username = await this.authService.setLocalPassword(
@@ -313,12 +334,13 @@ export class AuthController {
       dto.username,
     );
     await this.audit(request, 'info', 'local_password_updated', userId);
-    return {
+    this.clearRefreshCookie(response);
+    return response.json({
       message: '本地账号和密码设置成功',
       username,
       hasLocalPassword: true,
       requiresUsernameSetup: false,
-    };
+    });
   }
 
   @Get('auth/profile')

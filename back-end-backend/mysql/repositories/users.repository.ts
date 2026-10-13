@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UserEntity, UserProfileEntity } from '../entities/index.js';
+import {
+  RefreshTokenEntity,
+  UserEntity,
+  UserProfileEntity,
+} from '../entities/index.js';
 
 export interface EditableUserProfile {
   nickname?: string | null;
@@ -141,15 +145,32 @@ export class UsersRepository {
     passwordHash: string,
     operator: string,
   ): Promise<void> {
-    await this.repository.update(
-      { userId },
-      {
-        username,
-        password: passwordHash,
-        operator,
-        operatorId: userId,
-      },
-    );
+    await this.repository.manager.transaction(async (manager) => {
+      const users = manager.getRepository(UserEntity);
+      const user = await users
+        .createQueryBuilder('user')
+        .where('user.userId = :userId', { userId })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!user) return;
+
+      await users.update(
+        { userId },
+        {
+          username,
+          password: passwordHash,
+          operator,
+          operatorId: userId,
+          sessionVersion: user.sessionVersion + 1,
+        },
+      );
+      await manager
+        .getRepository(RefreshTokenEntity)
+        .createQueryBuilder()
+        .delete()
+        .where('user_id = :userId', { userId })
+        .execute();
+    });
   }
 
   /** 读取用户详情表中的公开个人资料字段。 */

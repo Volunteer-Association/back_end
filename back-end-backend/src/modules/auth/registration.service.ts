@@ -21,6 +21,10 @@ import {
 import { Inject } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 import { RegistrationMailerService } from './registration-mailer.service.js';
+import {
+  assertBcryptPasswordLength,
+  BCRYPT_ROUNDS,
+} from './password-policy.js';
 
 type RegistrationResult =
   | { type: 'registered'; user: UserEntity }
@@ -128,6 +132,7 @@ export class RegistrationService {
     password: string;
     emailCode: string;
   }, ipAddress?: string) {
+    assertBcryptPasswordLength(input.password);
     const username = input.username.trim();
     const email = input.email.trim().toLowerCase();
     let result: RegistrationResult;
@@ -183,7 +188,7 @@ export class RegistrationService {
         const user = users.create({
           userId,
           username,
-          password: await hash(input.password, 12),
+          password: await hash(input.password, BCRYPT_ROUNDS),
           status: 'active',
           lastLoginIp: ipAddress?.slice(0, 50) ?? null,
           lastLoginAt: new Date(),

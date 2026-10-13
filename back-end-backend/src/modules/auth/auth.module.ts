@@ -11,6 +11,7 @@ import { RegistrationMailerService } from './registration-mailer.service.js';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { ACCESS_TOKEN_TTL_SECONDS } from '../../../config/auth.constants.js';
 import { LoggingModule } from '../logging/logging.module.js';
+import { LoginAttemptService } from './login-attempt.service.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { LoggingModule } from '../logging/logging.module.js';
     OAuthService,
     RegistrationService,
     RegistrationMailerService,
+    LoginAttemptService,
     AuthGuard,
   ],
   exports: [AuthService, AuthGuard, JwtModule],

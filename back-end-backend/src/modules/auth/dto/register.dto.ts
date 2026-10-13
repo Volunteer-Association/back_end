@@ -29,13 +29,13 @@ export class RegisterDto {
   email: string;
 
   @ApiProperty({
-    description: '本地登录密码，8-72 位；服务端使用 bcrypt 保存哈希。',
+    description: '新密码至少 12 位，且最多 72 个 UTF-8 字节；服务端使用 bcrypt 保存哈希。',
     example: 'StrongPass123!',
-    minLength: 8,
+    minLength: 12,
     maxLength: 72,
   })
   @IsString()
-  @MinLength(8)
+  @MinLength(12)
   @MaxLength(72)
   password: string;
 

@@ -191,11 +191,11 @@ npm run start:dev
 
 后端使用 `config/config.ts` 读取配置。环境文件按 `.env.<NODE_ENV>`、兼容的 `.env.dev`/`.env.prod`、`.env` 的顺序加载；进程环境变量优先于文件。修改环境文件后重启后端。`SQL_UESRNAME` 仅作为旧拼写兼容项，新配置应使用 `SQL_USERNAME`。
 
-首次创建本地数据库时，先手动创建并选择 `.env` 中 `SQL_DATABASE` 指定的数据库，再执行 `back-end-backend/mysql/init.sql`。该脚本是唯一的新库结构定义；不再维护重复的 `pms_user.sql`。`pms_user` 只保存登录账号、密码哈希、状态和登录元数据；`users` 保存邮箱、昵称、头像、手机号、性别等用户详情；`roles` 保存角色定义，`user_roles` 用 `role_id` 与雪花 `user_id` 关联用户和角色。OAuth、Refresh Token、文件和日志也关联 `pms_user.user_id`。各表字段均有中文注释。
+首次创建本地数据库时，先手动创建并选择 `.env` 中 `SQL_DATABASE` 指定的数据库，再执行 `back-end-backend/mysql/init.sql`。该脚本是唯一的新库结构定义；不再维护重复的 `pms_user.sql`。`pms_user` 只保存登录账号、密码哈希、状态和登录元数据；`users` 保存邮箱、昵称、头像、手机号、性别等用户详情；`roles` 保存角色定义，`user_roles` 用 `role_id` 与雪花 `user_id` 关联用户和角色。OAuth、Refresh Token、文件和日志也关联 `pms_user.user_id`。各表字段均有中文注释。已有数据库启用登录限流前，需执行 `back-end-backend/mysql/migrations/20261013_add_login_attempt_limits.sql` 创建限流表。
 
 角色不存放在 `pms_user` 或 `users` 中。初始化时会创建 `user` 和 `admin` 两个基础角色；新注册/第三方登录用户默认获得 `user` 角色。首次管理员授权由数据库管理员按实际账号执行：`INSERT INTO user_roles (user_id, role_id) SELECT user_id, id FROM pms_user WHERE login_name = '实际账号' AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = pms_user.user_id AND r.role_key = 'admin');`。不要直接修改用户表中的角色字段。
 
-本地注册使用邮箱验证码：前端先调用 `POST /auth/register/email-code`，再调用 `POST /auth/register` 提交用户名、邮箱、密码和验证码。注册时会将用户名同步为用户详情表中的默认昵称；成功注册时 `pms_user.last_login_ip`、`last_login_time` 记录来源 IP 与登录时间，后续成功登录会更新这两个字段。审计日志也会记录登录/注册请求 IP。验证码有效期由 `EMAIL_EXPIRES`（毫秒）控制，默认 5 分钟；邮箱重发间隔由 `EMAIL_VERIFICATION_COOLDOWN`（秒）控制，默认 60 秒；最多允许错误尝试 5 次。数据库只保存验证码的 HMAC 摘要，注册成功后验证码在事务中消费，并自动创建 `pms_user`、`users` 和 `user_roles` 记录，随后直接登录。发码接口对已注册邮箱返回相同的通用提示以减少邮箱枚举。SMTP 配置使用 `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_SECURE`、`EMAIL_USER`、`EMAIL_PASS` 和可选 `EMAIL_FROM`；SMTP 凭据要么全部配置，要么全部留空。未配置时邮件验证码接口会明确报错，不影响已有登录功能。
+本地注册使用邮箱验证码：前端先调用 `POST /auth/register/email-code`，再调用 `POST /auth/register` 提交用户名、邮箱、密码和验证码。新设密码要求至少 12 位、最多 72 个 UTF-8 字节；哈希使用 bcrypt cost factor 12，禁止 bcrypt 的 72 字节静默截断。已有较短密码仍可登录，建议登录后主动修改。注册时会将用户名同步为用户详情表中的默认昵称；成功注册时 `pms_user.last_login_ip`、`last_login_time` 记录来源 IP 与登录时间，后续成功登录会更新这两个字段。审计日志也会记录登录/注册请求 IP。验证码有效期由 `EMAIL_EXPIRES`（毫秒）控制，默认 5 分钟；邮箱重发间隔由 `EMAIL_VERIFICATION_COOLDOWN`（秒）控制，默认 60 秒；最多允许错误尝试 5 次。数据库只保存验证码的 HMAC 摘要，注册成功后验证码在事务中消费，并自动创建 `pms_user`、`users` 和 `user_roles` 记录，随后直接登录。发码接口对已注册邮箱返回相同的通用提示以减少邮箱枚举。SMTP 配置使用 `EMAIL_HOST`、`EMAIL_PORT`、`EMAIL_SECURE`、`EMAIL_USER`、`EMAIL_PASS` 和可选 `EMAIL_FROM`；SMTP 凭据要么全部配置，要么全部留空。未配置时邮件验证码接口会明确报错，不影响已有登录功能。
 
 邮箱验证码接口若返回 403，请检查浏览器开发者工具中该请求的 `Origin` 请求头，并将其完整源地址（仅协议、主机和端口，例如 `https://app.example.com`）加入后端 `CORS_ORIGINS`，逗号分隔且不要带路径。修改后重启后端。此接口会拒绝缺少 Origin 或未列入白名单的请求；CORS 配置允许末尾斜杠，但不会忽略协议、域名或端口差异。
 
@@ -207,7 +207,9 @@ npm run start:dev
 
 首次直接使用某个第三方账号登录时，后端在 `pms_user` 建立待完善的认证账号，在 `users` 创建用户详情，并默认关联 `user` 角色；`oauth_identities` 保存唯一的“提供方 + 提供方用户 ID -> 本地用户”关系。OAuth 回调后若账号仍使用系统生成的内部名，或尚未设置本地密码，前端会进入“账号安全与绑定”完善页，而不是跳到首页。用户在此设置自己选择的本地登录账号和密码，后续登录不依赖生成的系统名；第三方快捷登录仍保留。已有完整本地账号的绑定身份登录后正常进入原页面。已登录用户也可以从导航栏的“账号绑定”进入，主动将 Gitee 或 GitHub 关联到当前本地账号。不会仅凭邮箱自动合并，避免不安全的账号接管；若第三方身份已属于其他本地账号，绑定会被拒绝，用户应先登录原账号处理。OAuth 登录不授予管理员权限。导航栏会显示第三方资料头像，头像不可用时显示用户名首字母。
 
-第三方登录用户初始没有本地密码。登录后打开“账号绑定”页面可设置本地密码；已有密码的账号需提供当前密码才能修改。密码以 bcrypt 哈希保存，不会回传或记录明文；设置后可继续用本地登录账号（`pms_user.login_name`）及密码登录。相应接口为已登录用户专用的 `GET /auth/password`（查询是否已设置）和 `POST /auth/password`（设置/修改）。
+第三方登录用户初始没有本地密码。登录后打开“账号绑定”页面可设置本地密码；已有密码的账号需提供当前密码才能修改。密码以 bcrypt 哈希保存，不会回传或记录明文；设置后可继续用本地登录账号（`pms_user.login_name`）及密码登录。修改密码会在同一数据库事务内递增会话版本并删除该账号所有 Refresh Token，其他设备及当前旧会话都需重新认证。相应接口为已登录用户专用的 `GET /auth/password`（查询是否已设置）和 `POST /auth/password`（设置/修改）。
+
+密码登录对每个来源 IP 每 15 分钟最多记录 30 次失败，并对同一账号与 IP 组合在 5 次失败后临时限流 15 分钟，响应 `429` 并返回 `Retry-After`。限流计数保存在数据库，账号和 IP 仅以 `JWT_SECRET` 派生的 HMAC 摘要存储，可跨后端实例生效；确保 `JWT_SECRET` 足够随机且所有实例配置相同。若部署在反向代理后，必须仅信任实际受控的代理并正确配置客户端 IP 传递，否则多个用户可能共用代理 IP 的限额。密码哈希能降低数据库泄露后直接还原密码的风险，但不能阻止弱密码被离线猜测、钓鱼、终端恶意软件或凭据复用攻击；请使用长且唯一的密码，并同时启用 HTTPS、限制数据库访问和保护密钥。
 
 导航栏的“个人资料”页面单独用于修改昵称、手机号和性别；邮箱目前只读，避免绕过邮箱验证流程。资料通过 `GET /auth/profile` 与 `PATCH /auth/profile` 读写 `users` 表，修改时将当前本地账号写入 `operator`，雪花用户 ID 写入 `operator_id`，并由 `updated_at` 自动记录时间。注册和首次 OAuth 建号时，创建人字段标记为系统，最后操作人字段记录新用户及其雪花 ID；设置/修改本地登录账号或密码也会同步更新 `pms_user.operator` 与 `operator_id`。账号安全与绑定页面仅管理密码、第三方账号和登录设备。
 

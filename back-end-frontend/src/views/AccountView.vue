@@ -162,7 +162,7 @@
           <el-input
             v-model="passwordForm.newPassword"
             autocomplete="new-password"
-            placeholder="请输入 8-72 位密码"
+            placeholder="至少 12 位，最多 72 个 UTF-8 字节"
             show-password
             type="password"
           />
@@ -246,7 +246,7 @@ const passwordRules = computed<FormRules>(() => ({
     : [],
   newPassword: [
     { required: true, message: '请输入新密码', trigger: 'blur' },
-    { min: 8, max: 72, message: '密码长度需为 8-72 位', trigger: 'blur' },
+    { min: 12, max: 72, message: '密码至少 12 位，最多 72 个字符', trigger: 'blur' },
   ],
   confirmPassword: [
     { required: true, message: '请再次输入新密码', trigger: 'blur' },
@@ -366,15 +366,9 @@ async function savePassword() {
         : {}),
       newPassword: passwordForm.newPassword,
     })
-    hasLocalPassword.value = true
-    requiresUsernameSetup.value = false
-    auth.updateUsername(passwordForm.username || auth.user?.username || '')
-    passwordForm.username = ''
-    passwordForm.currentPassword = ''
-    passwordForm.newPassword = ''
-    passwordForm.confirmPassword = ''
-    passwordFormRef.value.clearValidate()
-    ElMessage.success('本地密码已保存')
+    auth.clearSession()
+    ElMessage.success('密码已保存，所有设备已退出，请使用新密码重新登录')
+    await router.replace('/login')
   } catch (error: unknown) {
     const message =
       typeof error === 'object' &&

@@ -13,7 +13,7 @@ export class LoginDto {
   username: string;
 
   @ApiProperty({
-    description: '本地账号密码，8-72 位密码均可；不会在响应中返回。',
+    description: '本地账号密码；新密码至少 12 位，兼容已有旧密码；不会在响应中返回。',
     example: 'StrongPass123!',
     minLength: 1,
     maxLength: 128,

@@ -73,6 +73,7 @@ describe('AuthService', () => {
     expect(refreshTokens.create).toHaveBeenCalledWith(
       response.refreshToken,
       '1234567890123456789',
+      0,
     );
     expect(response.data.user).toEqual({
       id: '1234567890123456789',

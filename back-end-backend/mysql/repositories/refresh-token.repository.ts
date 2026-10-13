@@ -14,7 +14,11 @@ import { REFRESH_TOKEN_TTL_SECONDS } from '../../config/auth.constants.js';
 export class RefreshTokenRepository {
   constructor(@InjectDataSource() private readonly dataSource: DataSource) {}
 
-  async create(token: string, userId: string): Promise<number | null> {
+  async create(
+    token: string,
+    userId: string,
+    expectedSessionVersion?: number,
+  ): Promise<number | null> {
     return this.dataSource.transaction(async (manager) => {
       const users = manager.getRepository(UserEntity);
       const user = await users
@@ -23,6 +27,12 @@ export class RefreshTokenRepository {
         .setLock('pessimistic_write')
         .getOne();
       if (!user || mapEnabledStatus(user.status) !== 'active') return null;
+      if (
+        expectedSessionVersion !== undefined &&
+        user.sessionVersion !== expectedSessionVersion
+      ) {
+        return null;
+      }
 
       const tokens = manager.getRepository(RefreshTokenEntity);
       const now = new Date();
