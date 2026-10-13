@@ -23,6 +23,7 @@
 | 认证与会话 | 邮箱验证码注册、本地账号登录、短期 Access Token 与 HttpOnly Refresh Token；支持账号状态检查、会话撤销和多设备登录设置。 |
 | 第三方账号 | Gitee/GitHub OAuth 登录与已登录账号绑定；授权状态一次性校验，第三方密钥只保存在后端。 |
 | 用户资料 | 独立的“个人资料”页面管理昵称、手机号和性别；邮箱只读，避免跳过邮箱验证。 |
+| 账单管理 | 记录个人收入与支出，支持分类、日期筛选、收支汇总，以及账单新增、编辑和删除。 |
 | 系统日志 | 数据库明确区分 `http` 请求日志与 `event` 业务事件，支持按分类/等级筛选及服务端分页。 |
 | 其他页面 | 系统信息、文件上传、3D/AI/API 演示；`/demo` CRUD 是模拟数据的占位示例。 |
 
@@ -191,7 +192,7 @@ npm run start:dev
 
 后端使用 `config/config.ts` 读取配置。环境文件按 `.env.<NODE_ENV>`、兼容的 `.env.dev`/`.env.prod`、`.env` 的顺序加载；进程环境变量优先于文件。修改环境文件后重启后端。`SQL_UESRNAME` 仅作为旧拼写兼容项，新配置应使用 `SQL_USERNAME`。
 
-首次创建本地数据库时，先手动创建并选择 `.env` 中 `SQL_DATABASE` 指定的数据库，再执行 `back-end-backend/mysql/init.sql`。该脚本是唯一的新库结构定义；不再维护重复的 `pms_user.sql`。`pms_user` 只保存登录账号、密码哈希、状态和登录元数据；`users` 保存邮箱、昵称、头像、手机号、性别等用户详情；`roles` 保存角色定义，`user_roles` 用 `role_id` 与雪花 `user_id` 关联用户和角色。OAuth、Refresh Token、文件和日志也关联 `pms_user.user_id`。各表字段均有中文注释。已有数据库启用登录限流前，需执行 `back-end-backend/mysql/migrations/20261013_add_login_attempt_limits.sql` 创建限流表。
+首次创建本地数据库时，先手动创建并选择 `.env` 中 `SQL_DATABASE` 指定的数据库，再执行 `back-end-backend/mysql/init.sql`。该脚本是唯一的新库结构定义；不再维护重复的 `pms_user.sql`。`pms_user` 只保存登录账号、密码哈希、状态和登录元数据；`users` 保存邮箱、昵称、头像、手机号、性别等用户详情；`roles` 保存角色定义，`user_roles` 用 `role_id` 与雪花 `user_id` 关联用户和角色。OAuth、Refresh Token、文件、日志和账单也关联 `pms_user.user_id`。各表字段均有中文注释。已有数据库部署账单管理前，需执行 `back-end-backend/mysql/migrations/20261013_create_bills.sql` 创建账单表；已有数据库启用登录限流前，需执行 `back-end-backend/mysql/migrations/20261013_add_login_attempt_limits.sql` 创建限流表。
 
 角色不存放在 `pms_user` 或 `users` 中。初始化时会创建 `user` 和 `admin` 两个基础角色；新注册/第三方登录用户默认获得 `user` 角色。首次管理员授权由数据库管理员按实际账号执行：`INSERT INTO user_roles (user_id, role_id) SELECT user_id, id FROM pms_user WHERE login_name = '实际账号' AND NOT EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = pms_user.user_id AND r.role_key = 'admin');`。不要直接修改用户表中的角色字段。
 

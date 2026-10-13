@@ -26,6 +26,11 @@ const router = createRouter({
           component: () => import('@/views/HomeView.vue'),
         },
         {
+          path: 'bills',
+          name: 'bills',
+          component: () => import('@/views/BillsView.vue'),
+        },
+        {
           path: 'about',
           name: 'about',
           component: () => import('@/views/AboutView.vue'),
@@ -44,6 +49,12 @@ const router = createRouter({
           path: 'admin/logs',
           name: 'admin-logs',
           component: () => import('@/views/AdminLogsView.vue'),
+          meta: { admin: true },
+        },
+        {
+          path: 'admin/dict',
+          name: 'admin-dict',
+          component: () => import('@/views/DictAdminView.vue'),
           meta: { admin: true },
         },
         {

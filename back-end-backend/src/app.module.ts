@@ -12,6 +12,8 @@ import { DemoModule } from './demo/demo.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { SystemModule } from './modules/system/system.module.js';
+import { BillsModule } from './modules/bills/bills.module.js';
+import { DictModule } from './modules/dict/dict.module.js';
 
 @Module({
   imports: [
@@ -27,6 +29,8 @@ import { SystemModule } from './modules/system/system.module.js';
     UsersModule,
     AuthModule,
     SystemModule,
+    BillsModule,
+    DictModule,
   ],
 })
 export class AppModule {}

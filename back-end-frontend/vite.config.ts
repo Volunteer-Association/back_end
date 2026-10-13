@@ -34,11 +34,18 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           // 大体积第三方库单独分包，利用浏览器缓存并行加载。
-          manualChunks: {
-            three: ['three'],
-            tensorflow: ['@tensorflow/tfjs'],
-            vue: ['vue', 'vue-router', 'pinia'],
-            element: ['element-plus'],
+          manualChunks(id: string) {
+            if (id.includes('node_modules/three')) return 'three'
+            if (id.includes('node_modules/@tensorflow')) return 'tensorflow'
+            if (id.includes('node_modules/element-plus')) return 'element'
+            if (
+              id.includes('node_modules/vue') ||
+              id.includes('node_modules/@vue') ||
+              id.includes('node_modules/pinia') ||
+              id.includes('node_modules/vue-router')
+            ) {
+              return 'vue'
+            }
           },
         },
       },
