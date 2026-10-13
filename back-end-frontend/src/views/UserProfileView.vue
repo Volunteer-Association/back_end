@@ -83,6 +83,7 @@ const profile = reactive({
   sex: 2,
 })
 
+/** 优先展示 API 返回的可读错误信息，未知异常时使用页面级提示。 */
 function errorMessage(error: unknown, fallback: string) {
   return typeof error === 'object' &&
     error !== null &&
@@ -92,6 +93,7 @@ function errorMessage(error: unknown, fallback: string) {
     : fallback
 }
 
+/** 读取资料并维护独立的加载错误状态，便于用户重试。 */
 async function loadProfile() {
   loading.value = true
   loadError.value = ''
@@ -108,6 +110,7 @@ async function loadProfile() {
   }
 }
 
+/** 保存前在前端提供即时反馈；后端 DTO 仍是最终校验边界。 */
 async function saveProfile() {
   if (saving.value) return
   if (profile.nickname.length > 60) {

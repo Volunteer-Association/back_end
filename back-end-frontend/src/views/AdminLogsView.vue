@@ -162,6 +162,7 @@ async function loadLogs(requestedPage = page.value) {
       level: level.value,
       category: category.value === 'all' ? undefined : category.value,
     })
+    // 忽略较旧的响应，避免快速切换筛选或页码时覆盖最新结果。
     if (requestId !== latestRequestId) return
 
     const lastPage = Math.max(1, Math.ceil(result.total / limit.value))

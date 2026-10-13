@@ -30,7 +30,7 @@ export interface AuditLogItem {
 }
 
 @Injectable()
-/** 写入审计事件并按时间倒序查询分页结果。 */
+/** 写入系统日志，并按分类、等级和时间倒序查询分页结果。 */
 export class LogsRepository {
   constructor(
     @InjectRepository(LogEntity)
@@ -54,6 +54,7 @@ export class LogsRepository {
     level?: LogLevel,
     category?: AuditLogCategory,
   ) {
+    // 分类和等级均由数据库过滤，再执行分页，避免只筛选当前页造成结果不完整。
     const query = this.repository
       .createQueryBuilder('log')
       .leftJoinAndSelect('log.user', 'user')

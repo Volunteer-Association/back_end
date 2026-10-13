@@ -1,4 +1,4 @@
--- Keep compatibility with databases upgraded using the earlier audit/http category migration.
+-- 兼容先前已增加 audit/http 分类字段的数据库，并统一改为 event/http。
 ALTER TABLE `logs`
   MODIFY COLUMN `category` ENUM('audit', 'event', 'http') NOT NULL DEFAULT 'audit'
     COMMENT '日志类型';

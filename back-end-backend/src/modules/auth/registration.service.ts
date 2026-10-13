@@ -52,6 +52,7 @@ export class RegistrationService {
     private readonly mailer: RegistrationMailerService,
   ) {}
 
+  /** 校验邮箱和重发间隔，保存验证码摘要后发送邮件。 */
   async sendCode(emailInput: string): Promise<number> {
     this.mailer.ensureConfigured();
     const email = emailInput.trim().toLowerCase();
@@ -61,6 +62,7 @@ export class RegistrationService {
       this.config.getOrThrow<number>('app.email.verificationCooldown');
     const expiresMs = this.config.getOrThrow<number>('app.email.expires');
     const expiresAt = new Date(now.getTime() + expiresMs);
+    // 数据库只保存带服务端密钥的摘要，即使验证码表泄漏也不能直接还原验证码。
     const codeHash = this.hashCode(email, code);
 
     let maySend: boolean;
@@ -110,6 +112,7 @@ export class RegistrationService {
     try {
       await this.mailer.sendVerificationCode(email, code, expiresMs);
     } catch (error: unknown) {
+      // 邮件发送失败时删除本次验证码，避免数据库保留用户实际未收到的有效码。
       await this.dataSource
         .getRepository(EmailVerificationEntity)
         .delete({ email, codeHash });
@@ -118,6 +121,7 @@ export class RegistrationService {
     return cooldownSeconds;
   }
 
+  /** 在单个事务内消费验证码并创建账号、资料和默认角色关联。 */
   async register(input: {
     username: string;
     email: string;
@@ -130,6 +134,7 @@ export class RegistrationService {
     try {
       result = await this.dataSource.transaction(
         async (manager): Promise<RegistrationResult> => {
+        // 对验证码行加锁，保证并发注册/重试时验证码只能被成功消费一次。
         const verifications = manager.getRepository(EmailVerificationEntity);
         const verification = await verifications
           .createQueryBuilder('verification')

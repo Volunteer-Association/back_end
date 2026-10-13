@@ -1,6 +1,51 @@
 # 前后端分离管理系统
 
-本项目由 Vue 3 前端和 NestJS 后端组成，后端使用 MySQL 持久化用户数据并通过 JWT 保护接口。前后端分别维护依赖、环境变量和构建流程；本地开发通过 Vite 代理 API，容器部署通过 Nginx/Compose 转发请求。
+基于 Vue 3、NestJS 和 MySQL 的前后端分离管理系统。前端负责登录与管理页面，后端提供认证、用户资料、OAuth、文件和系统接口；数据库结构通过显式 SQL 初始化和迁移，应用启动时不会自动改写数据库。
+
+## 目录
+
+- [功能概览](#功能概览)
+- [技术栈](#技术栈)
+- [项目结构](#项目结构)
+- [环境准备和本地启动](#环境准备和本地启动)
+- [第三方登录与本地用户关联](#第三方登录与本地用户关联)
+- [后续业务开发流程](#后续业务开发流程)
+- [检查和测试](#检查和测试)
+- [应用日志与审计](#应用日志与审计)
+- [Docker Compose](#docker-compose)
+- [API 文档](#api-文档)
+- [许可证](#许可证)
+
+## 功能概览
+
+| 功能 | 说明 |
+| --- | --- |
+| 认证与会话 | 邮箱验证码注册、本地账号登录、短期 Access Token 与 HttpOnly Refresh Token；支持账号状态检查、会话撤销和多设备登录设置。 |
+| 第三方账号 | Gitee/GitHub OAuth 登录与已登录账号绑定；授权状态一次性校验，第三方密钥只保存在后端。 |
+| 用户资料 | 独立的“个人资料”页面管理昵称、手机号和性别；邮箱只读，避免跳过邮箱验证。 |
+| 系统日志 | 数据库明确区分 `http` 请求日志与 `event` 业务事件，支持按分类/等级筛选及服务端分页。 |
+| 其他页面 | 系统信息、文件上传、3D/AI/API 演示；`/demo` CRUD 是模拟数据的占位示例。 |
+
+## 本地快速启动
+
+1. 准备 Node.js `>=22.14.0`、npm `>=10.9.2` 和 MySQL 8。
+2. 创建数据库，并执行 `back-end-backend/mysql/init.sql`。
+3. 将 `back-end-backend/.env.example` 复制为 `back-end-backend/.env`，填写数据库连接信息和至少 32 字符的 `JWT_SECRET`。
+4. 在两个终端分别启动服务：
+
+```bash
+cd back-end-backend
+npm install
+npm run start:dev
+```
+
+```bash
+cd back-end-frontend
+npm install
+npm run dev
+```
+
+默认前端地址为 `http://localhost:5173`，后端地址为 `http://localhost:3000`，Swagger 文档为 `http://localhost:3000/api/`。邮箱注册、OAuth 和 OSS 等功能还需按环境配置章节填写对应服务凭据。
 
 ## API 文档
 
@@ -15,8 +60,6 @@
 | 支付宝 | 微信 |
 |:---:|:---:|
 | <img src="./back-end-backend/public/zfb.jpg" alt="支付宝收款码" width="220"> | <img src="./back-end-backend/public/wx.jpg" alt="微信收款码" width="220"> |
-
-> **图片链接提示：** 当前收款码链接带有有效期，可能已经过期而无法显示。建议将收款码图片放入仓库的 `docs/images/` 并改用相对路径，或替换为长期有效的公开图片链接。
 
 ## npm 镜像设置
 
@@ -54,6 +97,9 @@ back-end/
 │   │   ├── types/               # Vite 和应用类型声明
 │   │   ├── utils/               # 通用工具
 │   │   └── views/               # 页面视图
+│   │       ├── AccountView.vue  # 密码、OAuth 绑定和登录设备设置
+│   │       ├── UserProfileView.vue # 独立的用户资料编辑页
+│   │       └── AdminLogsView.vue # 管理员日志筛选与分页
 │   ├── public/                  # 构建时原样复制的静态文件
 │   ├── nginx.conf               # SPA 回退和 API 反向代理
 │   └── package.json
@@ -84,6 +130,8 @@ back-end/
 ├── Dockerfile                   # 后端容器构建
 └── README.md
 ```
+
+前端页面通过 Vue Router 懒加载；路由守卫负责登录和管理员权限检查。Pinia 保存认证状态，统一 API 客户端负责令牌附加、并发刷新合并及会话失效后的本地状态清理。
 
 ### 后端依赖方向
 
@@ -163,17 +211,17 @@ npm run start:dev
 
 导航栏的“个人资料”页面单独用于修改昵称、手机号和性别；邮箱目前只读，避免绕过邮箱验证流程。资料通过 `GET /auth/profile` 与 `PATCH /auth/profile` 读写 `users` 表，修改时将当前本地账号写入 `operator`，雪花用户 ID 写入 `operator_id`，并由 `updated_at` 自动记录时间。注册和首次 OAuth 建号时，创建人字段标记为系统，最后操作人字段记录新用户及其雪花 ID；设置/修改本地登录账号或密码也会同步更新 `pms_user.operator` 与 `operator_id`。账号安全与绑定页面仅管理密码、第三方账号和登录设备。
 
-日志按数据库 `logs.category` 明确区分为 `http`（HTTP 请求日志）和 `event`（认证、账号及 OAuth 等事件日志）。所有 HTTP 响应（包括成功请求）都会写入数据库；等级按响应状态标记为 `info`、`warn` 或 `error`。已有数据库升级需依次执行 `mysql/migrations/20261013_add_log_category.sql` 和 `mysql/migrations/20261014_rename_audit_log_category_to_event.sql`，前者增加并回填分类字段，后者将 `audit` 分类统一改名为 `event`。全新数据库直接使用最新的 `mysql/init.sql`。
+日志按数据库 `logs.category` 明确区分为 `http`（HTTP 请求日志）和 `event`（认证、账号及 OAuth 等业务事件）。每个 HTTP 响应（包括成功请求）都会写入数据库，等级按响应状态标记为 `info`、`warn` 或 `error`。已有数据库升级时，若尚未添加分类字段，先执行 `mysql/migrations/20261013_add_log_category.sql`；再执行 `mysql/migrations/20261014_rename_audit_log_category_to_event.sql`，将旧 `audit` 分类转换为 `event`。SQL 迁移需人工执行，不会随应用启动自动运行；新数据库直接使用最新的 `mysql/init.sql`。
 
 本地账号登录与第三方登录都会签发 **15 分钟 Access Token**，专用于业务 API；**7 天 Refresh Token** 仅通过 HttpOnly Cookie 传递，数据库只保存哈希。Access Token 到期后，前端自动请求刷新接口，服务端原子消费旧 Refresh Token 并签发新的一对凭证；Refresh Token 过期、撤销或无效时才需要重新登录。退出登录会撤销当前 Refresh Token。登录、刷新与注销请求启用浏览器凭据传递；生产环境 Cookie 设置为 `Secure; SameSite=None`，因此需要 HTTPS。跨源请求还要求后端 CORS 开启 credentials、`CORS_ORIGINS` 精确列出前端 Origin（协议、域名和端口必须一致，不能使用 `*`），刷新/注销接口也会拒绝缺少 Origin 或不在白名单内的请求。即使 CORS 和 Cookie 设置正确，浏览器隐私策略仍可能阻止完全跨站点的第三方 Cookie；生产部署建议使用同站点子域名或由反向代理统一入口。执行用户表拆分迁移后旧 Refresh Token 和数字型 JWT 不再有效，用户需要重新登录。请保护好 `JWT_SECRET`，更换该值会使所有未过期 Access Token 失效。
 
-当前实际 `back_end` 数据库曾只读核对为旧版 `users`、`logs`、`files`，没有新认证/角色表。用户已明确要求不保留旧数据，因此 `back-end-backend/mysql/migrations/20261014_reset_auth_schema.sql` 是**破坏性重置脚本**：它会删除旧 `users`、`logs`、`files` 及已有的认证、OAuth、Token、角色和邮箱验证码表中的所有数据。先完整备份；确认可丢弃这些数据后执行该脚本，再执行 `back-end-backend/mysql/init.sql` 创建空的新结构和基础角色。脚本不会迁移或保留旧用户、管理员、日志或文件记录；所有用户需重新注册。真实数据库未由本次开发操作，迁移和初始化需要由数据库管理员手动执行。
-
 账号绑定启动接口使用已登录 JWT，并通过限定回调路径的 HttpOnly state Cookie 绑定浏览器流程；跨域部署需将前端来源加入 `CORS_ORIGINS`，并保持浏览器可接收该 Cookie。建议前后端使用同站点部署或由反向代理统一入口。第三方应用登记的 Callback URL 必须与对应 `OAUTH_GITEE_CALLBACK_URL` / `OAUTH_GITHUB_CALLBACK_URL` 完全一致。
 
-数据库结构不会因 Entity 改动自动同步；TypeORM `synchronize` 在所有环境关闭。请通过显式 SQL 管理结构变更。`mysql/init.sql` 用于本地初始化，不会自动迁移已创建数据库。
+数据库结构不会因 Entity 改动自动同步；TypeORM `synchronize` 在所有环境关闭。请通过显式 SQL 管理结构变更。`mysql/init.sql` 用于新数据库初始化，不会自动迁移已创建数据库。
 
 已初始化的数据库部署单设备会话失效功能前，需先执行一次 `back-end-backend/mysql/migrations/20261015_add_session_version.sql` 添加 `pms_user.session_version`。该迁移会清除升级前的 Refresh Token，用户需要重新登录；新数据库已由 `mysql/init.sql` 创建该字段。
+
+迁移前请确认数据库当前结构和已执行过的脚本，先备份，再按迁移说明顺序执行。`20261014_reset_auth_schema.sql` 会删除指定认证及业务表数据，仅适用于明确要重置数据的场景；不要把它作为常规升级脚本执行。
 
 ### 2. 配置并启动前端
 
@@ -240,7 +288,7 @@ npm run build
 
 后端会将每个 HTTP 请求的时间、请求 ID、方法、路径、状态码、耗时和来源 IP 输出到 NestJS 控制台，并追加写入后端工作目录下的 `logs/http-YYYY-MM-DD.log` 日志文件（按 UTC 日期每日滚动）。目录不存在时自动创建，可通过后端 `.env` 中的 `LOG_DIR` 设置文件目录。请确保运行进程对该目录有写入权限；Docker 部署需将该目录挂载为持久化卷，否则容器重建后文件不会保留。日志不包含请求/响应正文，也不记录 URL 查询参数，避免泄漏密码、OAuth code 或 token；响应带有 `X-Request-Id` 便于关联排查。
 
-登录成功/失败、OAuth 登录/绑定结果和注销事件会写入 MySQL `logs` 表。日志写入失败会在控制台明确报错，不会泄漏认证凭证，也不会阻断用户认证流程。管理员可通过 `GET /admin/logs?page=1&limit=50&level=warn` 查询，需携带管理员 Access Token；`level` 可选 `info`、`warn` 或 `error`，每页最多 100 条。日志可能包含 IP 和 User-Agent，须限制管理接口访问并按组织的数据保留策略管理。
+每条数据库日志都包含 `category`、`level`、`message` 和时间。HTTP 请求记录还保留请求 ID、方法、路径、状态码、耗时、IP 与 User-Agent；业务事件按认证、账号或 OAuth 操作记录。HTTP 日志不保存请求/响应正文或 URL 查询参数，避免把密码、OAuth code 或 token 写入日志。管理员可通过 `GET /admin/logs?page=1&limit=50&level=warn&category=http` 查询；`level` 可选 `info`、`warn`、`error`，`category` 可选 `http`、`event`，筛选由数据库执行，每页最多 100 条。日志可能包含 IP 和 User-Agent，须限制管理接口访问并按组织的数据保留策略管理。
 
 全新数据库初始化会创建 `logs` 表；上述破坏性重置会删除旧日志，之后由 `mysql/init.sql` 创建空日志表。
 

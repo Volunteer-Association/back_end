@@ -22,6 +22,7 @@ export class HttpLoggingMiddleware implements NestMiddleware {
     response.setHeader('X-Request-Id', requestId);
 
     response.on('finish', () => {
+      // 请求日志按响应状态定级；成功响应也入库，便于管理员按 http 分类完整检索。
       const level: LogLevel =
         response.statusCode >= 500
           ? 'error'
@@ -53,6 +54,7 @@ export class HttpLoggingMiddleware implements NestMiddleware {
         this.logger.log(line);
       }
       const requestUser = (request as Request & { user?: unknown }).user;
+      // 中间件在 Guard 前注册，user 可能尚未写入；只在认证载荷可用时关联用户。
       const userId =
         requestUser &&
         typeof requestUser === 'object' &&

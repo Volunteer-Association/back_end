@@ -55,6 +55,7 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token');
     }
 
+    // JWT 只验证签名和载荷；再查一次账号状态与版本，确保封禁或撤销会话可立即生效。
     const authenticationState =
       await this.usersService.findAuthenticationState(tokenPayload.sub);
     if (
