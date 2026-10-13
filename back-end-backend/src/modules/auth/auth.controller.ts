@@ -490,19 +490,50 @@ export class AuthController {
     if (!isOAuthProvider(providerName)) {
       throw new BadRequestException('不支持的第三方登录方式');
     }
-    const provider = providerName;
-    const callbackUrl = this.oauthService.getCallbackUrl(provider);
-    const callbackPath = new URL(callbackUrl).pathname;
-    const { state, url } =
-      await this.oauthService.createAuthorization(provider);
-    response.cookie(`oauth_state_${provider}`, state, {
-      httpOnly: true,
-      secure: callbackUrl.startsWith('https://'),
-      sameSite: 'lax',
-      path: callbackPath,
-      maxAge: 10 * 60 * 1000,
-    });
-    return response.redirect(url);
+    const authorizationUrl = await this.createOAuthAuthorization(
+      providerName,
+      response,
+    );
+    return response.redirect(authorizationUrl);
+  }
+
+  @Post('auth/oauth/:provider/start')
+  @ApiOperation({
+    summary: '点击后校验并发起第三方登录',
+    description:
+      '仅在用户点击第三方登录时检查服务端配置；可用时设置短期 state Cookie 并返回授权地址。',
+  })
+  @ApiParam({
+    name: 'provider',
+    description: '第三方平台标识。',
+    enum: ['gitee', 'github'],
+    example: 'gitee',
+  })
+  @ApiResponse({
+    status: 200,
+    description: '第三方授权地址。',
+    schema: {
+      example: {
+        authorizationUrl: 'https://gitee.com/oauth/authorize?...',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 503,
+    description: '该平台尚未配置第三方登录凭据。',
+  })
+  async startOAuthLogin(
+    @Param('provider') providerName: string,
+    @Res() response: Response,
+  ) {
+    if (!isOAuthProvider(providerName)) {
+      throw new BadRequestException('不支持的第三方登录方式');
+    }
+    const authorizationUrl = await this.createOAuthAuthorization(
+      providerName,
+      response,
+    );
+    return response.json({ authorizationUrl });
   }
 
   @Post('auth/oauth/:provider/link')
@@ -537,21 +568,12 @@ export class AuthController {
       throw new BadRequestException('不支持的第三方登录方式');
     }
     const userId = authenticatedUserId(request.user);
-    const provider = providerName;
-    const callbackUrl = this.oauthService.getCallbackUrl(provider);
-    const callbackPath = new URL(callbackUrl).pathname;
-    const { state, url } = await this.oauthService.createAuthorization(
-      provider,
+    const authorizationUrl = await this.createOAuthAuthorization(
+      providerName,
+      response,
       userId,
     );
-    response.cookie(`oauth_state_${provider}`, state, {
-      httpOnly: true,
-      secure: callbackUrl.startsWith('https://'),
-      sameSite: 'lax',
-      path: callbackPath,
-      maxAge: 10 * 60 * 1000,
-    });
-    return response.json({ authorizationUrl: url });
+    return response.json({ authorizationUrl });
   }
 
   @Get('auth/oauth-links')
@@ -805,6 +827,28 @@ export class AuthController {
       message: session.message,
       data: session.data,
     };
+  }
+
+  /** 共用登录与绑定授权初始化，确保 state Cookie 与数据库记录使用同一状态值。 */
+  private async createOAuthAuthorization(
+    provider: OAuthProvider,
+    response: Response,
+    userId: string | null = null,
+  ): Promise<string> {
+    const callbackUrl = this.oauthService.getCallbackUrl(provider);
+    const callbackPath = new URL(callbackUrl).pathname;
+    const { state, url } = await this.oauthService.createAuthorization(
+      provider,
+      userId,
+    );
+    response.cookie(`oauth_state_${provider}`, state, {
+      httpOnly: true,
+      secure: callbackUrl.startsWith('https://'),
+      sameSite: 'lax',
+      path: callbackPath,
+      maxAge: 10 * 60 * 1000,
+    });
+    return url;
   }
 
   private async audit(

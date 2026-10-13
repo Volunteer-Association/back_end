@@ -120,38 +120,32 @@
           注册并登录
         </el-button>
       </el-form>
-      <template v-if="oauthProviders.length">
-        <div class="login-divider"><span>或使用第三方账号登录</span></div>
-        <div class="oauth-buttons">
-          <el-button
-            v-if="oauthProviders.includes('gitee')"
-            size="large"
-            @click="startOAuth('gitee')"
-          >
-            使用 Gitee 登录
-          </el-button>
-          <el-button
-            v-if="oauthProviders.includes('github')"
-            size="large"
-            @click="startOAuth('github')"
-          >
-            使用 GitHub 登录
-          </el-button>
-        </div>
-      </template>
+      <div class="login-divider"><span>或使用第三方账号登录</span></div>
+      <div class="oauth-buttons">
+        <el-button
+          v-for="provider in oauthProviders"
+          :key="provider"
+          :loading="oauthLoading"
+          :disabled="oauthLoading"
+          size="large"
+          @click="startOAuth(provider)"
+        >
+          使用 {{ provider === 'gitee' ? 'Gitee' : 'GitHub' }} 登录
+        </el-button>
+      </div>
     </el-card>
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref } from 'vue'
+import { onUnmounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import {
-  getOAuthProviders,
   sendRegistrationCode,
+  startOAuthLogin,
   type OAuthProvider,
 } from '@/api/modules/auth'
 
@@ -161,11 +155,12 @@ const auth = useAuthStore()
 const formRef = ref<FormInstance>()
 const registerFormRef = ref<FormInstance>()
 const loading = ref(false)
+const oauthLoading = ref(false)
 const sendingCode = ref(false)
 const mode = ref<'login' | 'register'>('login')
 const countdown = ref(0)
 let countdownTimer: ReturnType<typeof setInterval> | undefined
-const oauthProviders = ref<OAuthProvider[]>([])
+const oauthProviders: OAuthProvider[] = ['gitee', 'github']
 const form = reactive({ username: '', password: '' })
 const registerForm = reactive({
   username: '',
@@ -200,32 +195,52 @@ const registerRules: FormRules = {
   ],
 }
 
-onMounted(async () => {
-  try {
-    oauthProviders.value = (await getOAuthProviders()).providers
-  } catch {
-    oauthProviders.value = []
-    ElMessage.warning('暂时无法获取第三方登录方式')
-  }
-})
-
 onUnmounted(() => {
   if (countdownTimer) clearInterval(countdownTimer)
 })
 
-function startOAuth(provider: OAuthProvider) {
-  const redirect = route.query.redirect
-  if (
-    typeof redirect === 'string' &&
-    redirect.startsWith('/') &&
-    !redirect.startsWith('//')
-  ) {
-    sessionStorage.setItem('oauth:redirect', redirect)
+async function startOAuth(provider: OAuthProvider) {
+  if (oauthLoading.value) return
+  oauthLoading.value = true
+  try {
+    // 只在用户主动点击时检查服务端配置；登录页初始化不额外请求后端。
+    const { authorizationUrl } = await startOAuthLogin(provider)
+    const redirect = route.query.redirect
+    if (
+      typeof redirect === 'string' &&
+      redirect.startsWith('/') &&
+      !redirect.startsWith('//')
+    ) {
+      sessionStorage.setItem('oauth:redirect', redirect)
+    }
+    window.location.assign(authorizationUrl)
+  } catch (error: unknown) {
+    const providerName = provider === 'gitee' ? 'Gitee' : 'GitHub'
+    ElMessage.error(
+      getErrorMessage(
+        error,
+        `${providerName} 登录暂不可用，请检查服务端配置后重试`,
+      ),
+    )
+  } finally {
+    oauthLoading.value = false
   }
-  const baseUrl = import.meta.env.VITE_API_BASE_URL || '/api'
-  window.location.assign(
-    `${baseUrl.replace(/\/$/, '')}/auth/oauth/${provider}`,
-  )
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (typeof error !== 'object' || error === null || !('message' in error)) {
+    return fallback
+  }
+  if (typeof error.message === 'string') return error.message
+  if (
+    Array.isArray(error.message) &&
+    error.message.every(
+      (part: unknown): part is string => typeof part === 'string',
+    )
+  ) {
+    return error.message.join('；')
+  }
+  return fallback
 }
 
 async function submit() {

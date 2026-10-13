@@ -81,6 +81,15 @@ export function getOAuthProviders() {
   return request.get<{ providers: OAuthProvider[] }>('/auth/oauth/providers')
 }
 
+/** 用户点击第三方登录时才由后端校验配置并创建授权状态。 */
+export function startOAuthLogin(provider: OAuthProvider) {
+  return request.post<{ authorizationUrl: string }>(
+    `/auth/oauth/${provider}/start`,
+    undefined,
+    { withCredentials: true },
+  )
+}
+
 /** 以 OAuth 回调产生的一次性兑换码创建本地登录会话。 */
 export function exchangeOAuthCode(code: string) {
   return request.post<LoginResponse>(
