@@ -15,6 +15,7 @@ import {
   SnowflakeIdGenerator,
 } from '../../../mysql/snowflake-id.js';
 import { DictService } from '../dict/dict.service.js';
+import { PaymentsService, yuanToCents } from '../payments/payments.service.js';
 import type {
   BillFilters,
   BillQueryDto,
@@ -49,6 +50,7 @@ export class BillsService {
     @Inject(SNOWFLAKE_ID_GENERATOR)
     private readonly idGenerator: SnowflakeIdGenerator,
     private readonly dict: DictService,
+    private readonly payments: PaymentsService,
   ) {}
 
   async findPage(userId: string, query: BillQueryDto) {
@@ -132,6 +134,26 @@ export class BillsService {
     const result = await this.bills.delete({ id, userId });
     if (!result.affected) throw new NotFoundException('账单不存在');
     return { success: true };
+  }
+
+  /** 用账户余额支付支出账单。余额不足由 PaymentsService 抛错。 */
+  async payWithBalance(userId: string, billId: string): Promise<BillEntity> {
+    const bill = await this.bills.findOne({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('账单不存在');
+    if (bill.type !== 'expense') throw new BadRequestException('收入账单无需支付');
+    if (bill.paidAt) throw new BadRequestException('该账单已支付');
+
+    const amountCents = yuanToCents(bill.amount);
+    await this.payments.consume({
+      userId,
+      amountCents,
+      refType: 'bill',
+      refId: bill.id,
+      note: `支付账单：${bill.category}`,
+    });
+
+    bill.paidAt = new Date();
+    return this.bills.save(bill);
   }
 
   private filteredQuery(

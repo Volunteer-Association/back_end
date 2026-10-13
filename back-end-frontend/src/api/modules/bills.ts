@@ -1,8 +1,6 @@
 import { request } from '../client'
 
 export type BillType = 'income' | 'expense'
-export type PaymentChannel = 'alipay' | 'wechat'
-export type PaymentStatus = 'pending' | 'paid' | 'failed'
 
 export interface Bill {
   id: string
@@ -15,18 +13,6 @@ export interface Bill {
   paidAt: string | null
   createdAt: string
   updatedAt: string
-}
-
-export interface Payment {
-  id: string
-  userId: string
-  billId: string
-  channel: PaymentChannel
-  amount: string
-  status: PaymentStatus
-  transactionId: string | null
-  paidAt: string | null
-  createdAt: string
 }
 
 export interface BillFilters {
@@ -79,24 +65,7 @@ export function deleteBill(id: string) {
   return request.delete<{ success: true }>(`/bills/${encodeURIComponent(id)}`)
 }
 
-/** 为支出账单发起支付。 */
-export function createPayment(billId: string, channel: PaymentChannel) {
-  return request.post<Payment>(
-    `/bills/${encodeURIComponent(billId)}/payments`,
-    { channel },
-  )
-}
-
-/** 查询支付单状态。 */
-export function getPayment(billId: string, paymentId: string) {
-  return request.get<Payment>(
-    `/bills/${encodeURIComponent(billId)}/payments/${encodeURIComponent(paymentId)}`,
-  )
-}
-
-/** 沙箱模拟支付成功。 */
-export function simulatePayment(billId: string, paymentId: string) {
-  return request.post<Payment>(
-    `/bills/${encodeURIComponent(billId)}/payments/${encodeURIComponent(paymentId)}/simulate`,
-  )
+/** 用账户余额支付支出账单。 */
+export function payBill(id: string) {
+  return request.post<Bill>(`/bills/${encodeURIComponent(id)}/pay`)
 }

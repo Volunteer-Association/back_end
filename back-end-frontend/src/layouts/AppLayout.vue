@@ -5,6 +5,7 @@
       <nav class="app-nav" aria-label="主导航">
         <RouterLink :to="{ name: 'home' }">首页</RouterLink>
         <RouterLink :to="{ name: 'bills' }">账单管理</RouterLink>
+        <RouterLink :to="{ name: 'wallet' }">我的钱包</RouterLink>
         <RouterLink :to="{ name: 'upload' }">文件上传</RouterLink>
         <RouterLink :to="{ name: 'about' }">关于</RouterLink>
         <RouterLink :to="{ name: 'user-profile' }">个人资料</RouterLink>
@@ -20,6 +21,12 @@
           :to="{ name: 'admin-dict' }"
         >
           数据字典
+        </RouterLink>
+        <RouterLink
+          v-if="auth.user?.role === 'admin'"
+          :to="{ name: 'admin-recharges' }"
+        >
+          充值审核
         </RouterLink>
         <RouterLink :to="{ name: 'three' }">3D 展示</RouterLink>
         <RouterLink :to="{ name: 'aidemo' }">AI 项目</RouterLink>

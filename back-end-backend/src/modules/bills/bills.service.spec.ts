@@ -13,13 +13,20 @@ describe('BillsService', () => {
     createQueryBuilder: jest.fn(),
   };
   const idGenerator = { nextId: jest.fn(async () => 'bill-id') };
+  // 分类由数据字典决定；默认放行，需要拒绝时在测试里单独 mock。
+  const dict = { isCategoryAllowed: jest.fn(async () => true) };
+  // PaymentsService 在本 spec 里不会被调用（payWithBalance 路径未覆盖）。
+  const payments = {};
   const service = new BillsService(
     repository as unknown as Repository<BillEntity>,
     idGenerator as never,
+    dict as never,
+    payments as never,
   );
 
   beforeEach(() => {
     jest.clearAllMocks();
+    dict.isCategoryAllowed.mockResolvedValue(true);
   });
 
   it('creates a bill owned by the authenticated user', async () => {
@@ -53,11 +60,12 @@ describe('BillsService', () => {
     expect(repository.save).not.toHaveBeenCalled();
   });
 
-  it('rejects a category that does not match its bill type', async () => {
+  it('rejects a category not present in the enabled dictionary', async () => {
+    dict.isCategoryAllowed.mockResolvedValue(false);
     await expect(
       service.create('user-1', {
         type: 'income',
-        category: '餐饮',
+        category: '不存在的分类',
         amount: '10.00',
         transactionDate: '2026-10-13',
       }),

@@ -116,7 +116,7 @@
                 v-if="row.type === 'expense' && !row.paidAt"
                 text
                 type="success"
-                @click="openPay(row)"
+                @click="payNow(row)"
               >支付</el-button>
               <el-button text type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button text type="danger" @click="confirmDelete(row)">删除</el-button>
@@ -150,7 +150,7 @@
                   v-if="item.type === 'expense' && !item.paidAt"
                   text
                   type="success"
-                  @click="openPay(item)"
+                  @click="payNow(item)"
                 >支付</el-button>
                 <el-button text type="primary" @click="openEdit(item)">编辑</el-button>
                 <el-button text type="danger" @click="confirmDelete(item)">删除</el-button>
@@ -236,59 +236,6 @@
         </el-button>
       </template>
     </el-dialog>
-
-    <!-- 支付对话框 -->
-    <el-dialog
-      v-model="payDialogVisible"
-      title="账单支付"
-      width="min(440px, calc(100vw - 32px))"
-      destroy-on-close
-    >
-      <div v-if="currentPayBill" class="pay-body">
-        <div class="pay-amount">
-          <span>应付金额</span>
-          <strong>¥{{ formatAmount(currentPayBill.amount) }}</strong>
-        </div>
-        <el-radio-group v-model="payChannel" class="channel-group">
-          <el-radio-button value="alipay">支付宝</el-radio-button>
-          <el-radio-button value="wechat">微信支付</el-radio-button>
-        </el-radio-group>
-
-        <div v-if="payInfo" class="pay-status">
-          <el-alert
-            v-if="payInfo.status === 'paid'"
-            type="success"
-            :title="`支付成功（交易号 ${payInfo.transactionId}）`"
-            :closable="false"
-            show-icon
-          />
-          <template v-else>
-            <div class="qrcode-mock">
-              <div class="qrcode-placeholder">
-                {{ payChannel === 'alipay' ? '支付宝' : '微信' }}扫码支付
-              </div>
-              <p class="qrcode-tip">沙箱演示：点击下方按钮模拟支付成功</p>
-            </div>
-            <el-button
-              type="primary"
-              class="full-width"
-              :loading="paying"
-              @click="confirmPay"
-            >我已完成支付（模拟）</el-button>
-          </template>
-        </div>
-        <el-empty v-else description="选择支付渠道后创建支付单" />
-      </div>
-      <template #footer>
-        <el-button @click="closePay">关闭</el-button>
-        <el-button
-          v-if="!payInfo"
-          type="primary"
-          :loading="creatingPay"
-          @click="createPay"
-        >发起支付</el-button>
-      </template>
-    </el-dialog>
   </section>
 </template>
 
@@ -298,17 +245,14 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   createBill,
-  createPayment,
   deleteBill,
   getBillSummary,
   getBills,
-  simulatePayment,
+  payBill,
   updateBill,
   type Bill,
   type BillInput,
   type BillType,
-  type Payment,
-  type PaymentChannel,
 } from '@/api/modules/bills'
 import { getEnabledDictItems } from '@/api/modules/dict'
 
@@ -356,14 +300,6 @@ const editingBill = ref<Bill | null>(null)
 const billFormRef = ref<FormInstance>()
 const scrollContainer = ref<HTMLElement>()
 let latestRequestId = 0
-
-// 支付相关
-const payDialogVisible = ref(false)
-const currentPayBill = ref<Bill | null>(null)
-const payChannel = ref<PaymentChannel>('alipay')
-const payInfo = ref<Payment | null>(null)
-const creatingPay = ref(false)
-const paying = ref(false)
 
 const filterCategories = computed(() =>
   filterType.value === 'all'
@@ -526,46 +462,28 @@ async function confirmDelete(bill: Bill) {
   }
 }
 
-// ===== 支付流程 =====
-function openPay(bill: Bill) {
-  currentPayBill.value = bill
-  payChannel.value = 'alipay'
-  payInfo.value = null
-  payDialogVisible.value = true
-}
-
-async function createPay() {
-  if (!currentPayBill.value) return
-  creatingPay.value = true
+// ===== 余额支付 =====
+async function payNow(bill: Bill) {
   try {
-    payInfo.value = await createPayment(currentPayBill.value.id, payChannel.value)
+    await ElMessageBox.confirm(
+      `将从账户余额扣除 ¥${formatAmount(bill.amount)} 支付该账单，确认？`,
+      '余额支付',
+      { confirmButtonText: '确认支付', cancelButtonText: '取消', type: 'info' },
+    )
   } catch {
-    ElMessage.error('创建支付单失败')
-  } finally {
-    creatingPay.value = false
+    return
   }
-}
-
-async function confirmPay() {
-  if (!currentPayBill.value || !payInfo.value) return
-  paying.value = true
   try {
-    payInfo.value = await simulatePayment(currentPayBill.value.id, payInfo.value.id)
+    const updated = await payBill(bill.id)
     ElMessage.success('支付成功')
-    // 同步更新列表中该账单的 paidAt
-    const idx = items.value.findIndex((b) => b.id === currentPayBill.value!.id)
-    if (idx >= 0) items.value[idx] = { ...items.value[idx], paidAt: new Date().toISOString() }
-  } catch {
-    ElMessage.error('支付确认失败')
-  } finally {
-    paying.value = false
+    const idx = items.value.findIndex((b) => b.id === bill.id)
+    if (idx >= 0) items.value[idx] = updated
+  } catch (e: unknown) {
+    const msg =
+      (e as { response?: { data?: { message?: string } } })?.response?.data
+        ?.message ?? '支付失败'
+    ElMessage.error(msg)
   }
-}
-
-function closePay() {
-  payDialogVisible.value = false
-  currentPayBill.value = null
-  payInfo.value = null
 }
 
 onMounted(async () => {

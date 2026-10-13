@@ -31,6 +31,11 @@ const router = createRouter({
           component: () => import('@/views/BillsView.vue'),
         },
         {
+          path: 'wallet',
+          name: 'wallet',
+          component: () => import('@/views/WalletView.vue'),
+        },
+        {
           path: 'about',
           name: 'about',
           component: () => import('@/views/AboutView.vue'),
@@ -55,6 +60,12 @@ const router = createRouter({
           path: 'admin/dict',
           name: 'admin-dict',
           component: () => import('@/views/DictAdminView.vue'),
+          meta: { admin: true },
+        },
+        {
+          path: 'admin/recharges',
+          name: 'admin-recharges',
+          component: () => import('@/views/AdminRechargeView.vue'),
           meta: { admin: true },
         },
         {

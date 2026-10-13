@@ -19,6 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
+import { LoggingService } from '../logging/logging.service.js';
 import {
   BillQueryDto,
   CreateBillDto,
@@ -35,7 +36,10 @@ interface AuthenticatedRequest extends Request {
 @UseGuards(AuthGuard)
 @Controller('bills')
 export class BillsController {
-  constructor(private readonly billsService: BillsService) {}
+  constructor(
+    private readonly billsService: BillsService,
+    private readonly logging: LoggingService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: '分页查询当前用户账单' })
@@ -63,31 +67,81 @@ export class BillsController {
   @Post()
   @ApiOperation({ summary: '新增账单' })
   @ApiResponse({ status: 201, description: '账单已创建。' })
-  create(
+  async create(
     @Req() request: AuthenticatedRequest,
     @Body() input: CreateBillDto,
   ) {
-    return this.billsService.create(this.userId(request), input);
+    const userId = this.userId(request);
+    const bill = await this.billsService.create(userId, input);
+    await this.logging.audit({
+      level: 'info',
+      category: 'event',
+      message: `账单创建：${input.type === 'income' ? '收入' : '支出'} ${input.category} ¥${input.amount}`,
+      userId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return bill;
   }
 
   @Patch(':id')
   @ApiOperation({ summary: '更新当前用户账单' })
   @ApiResponse({ status: 200, description: '账单已更新。' })
   @ApiResponse({ status: 404, description: '账单不存在或不属于当前用户。' })
-  update(
+  async update(
     @Req() request: AuthenticatedRequest,
     @Param('id') id: string,
     @Body() input: UpdateBillDto,
   ) {
-    return this.billsService.update(this.userId(request), id, input);
+    const userId = this.userId(request);
+    const bill = await this.billsService.update(userId, id, input);
+    await this.logging.audit({
+      level: 'info',
+      category: 'event',
+      message: `账单更新：${id}`,
+      userId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return bill;
   }
 
   @Delete(':id')
   @ApiOperation({ summary: '删除当前用户账单' })
   @ApiResponse({ status: 200, description: '账单已删除。' })
   @ApiResponse({ status: 404, description: '账单不存在或不属于当前用户。' })
-  remove(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
-    return this.billsService.remove(this.userId(request), id);
+  async remove(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    const userId = this.userId(request);
+    const result = await this.billsService.remove(userId, id);
+    await this.logging.audit({
+      level: 'warn',
+      category: 'event',
+      message: `账单删除：${id}`,
+      userId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return result;
+  }
+
+  @Post(':id/pay')
+  @ApiOperation({
+    summary: '用账户余额支付支出账单',
+    description: '扣款失败（余额不足）会返回 400。',
+  })
+  @ApiResponse({ status: 200, description: '支付成功，返回更新后的账单。' })
+  async pay(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    const userId = this.userId(request);
+    const bill = await this.billsService.payWithBalance(userId, id);
+    await this.logging.audit({
+      level: 'info',
+      category: 'event',
+      message: `账单支付：${id} ¥${bill.amount}`,
+      userId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return bill;
   }
 
   private userId(request: AuthenticatedRequest): string {

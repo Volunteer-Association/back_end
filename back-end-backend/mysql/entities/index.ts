@@ -8,12 +8,15 @@ import { UserProfileEntity } from './user-profile.entity.js';
 import { RoleEntity } from './role.entity.js';
 import { EmailVerificationEntity } from './email-verification.entity.js';
 import { BillEntity } from './bill.entity.js';
-import { PaymentEntity } from './payment.entity.js';
 import { DictItemEntity } from './dict-item.entity.js';
+import { UserBalanceEntity } from './user-balance.entity.js';
+import { RechargeOrderEntity } from './recharge-order.entity.js';
+import { BalanceTransactionEntity } from './balance-transaction.entity.js';
 
 export { UserEntity };
 export { UserProfileEntity, RoleEntity, EmailVerificationEntity };
-export { BillEntity, PaymentEntity, DictItemEntity };
+export { BillEntity, DictItemEntity };
+export { UserBalanceEntity, RechargeOrderEntity, BalanceTransactionEntity };
 export {
   OAuthIdentityEntity,
   OAuthLoginCodeEntity,
@@ -24,7 +27,8 @@ export {
 export type { UserRole, UserStatus } from './user.entity.js';
 export type { OAuthProvider } from './oauth-identity.entity.js';
 export type { LogCategory, LogLevel } from './log.entity.js';
-export type { PaymentChannel, PaymentStatus } from './payment.entity.js';
+export type { RechargeChannel, RechargeStatus } from './recharge-order.entity.js';
+export type { BalanceTxnType } from './balance-transaction.entity.js';
 
 export const DATABASE_ENTITIES = [
   UserEntity,
@@ -37,6 +41,8 @@ export const DATABASE_ENTITIES = [
   RoleEntity,
   EmailVerificationEntity,
   BillEntity,
-  PaymentEntity,
   DictItemEntity,
+  UserBalanceEntity,
+  RechargeOrderEntity,
+  BalanceTransactionEntity,
 ] as const;
