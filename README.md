@@ -217,8 +217,6 @@ npm run start:dev
 
 账号绑定启动接口使用已登录 JWT，并通过限定回调路径的 HttpOnly state Cookie 绑定浏览器流程；跨域部署需将前端来源加入 `CORS_ORIGINS`，并保持浏览器可接收该 Cookie。建议前后端使用同站点部署或由反向代理统一入口。第三方应用登记的 Callback URL 必须与对应 `OAUTH_GITEE_CALLBACK_URL` / `OAUTH_GITHUB_CALLBACK_URL` 完全一致。
 
-数据库结构不会因 Entity 改动自动同步；TypeORM `synchronize` 在所有环境关闭。请通过显式 SQL 管理结构变更。`mysql/init.sql` 用于新数据库初始化，不会自动迁移已创建数据库。
-
 已初始化的数据库部署单设备会话失效功能前，需先执行一次 `back-end-backend/mysql/migrations/20261015_add_session_version.sql` 添加 `pms_user.session_version`。该迁移会清除升级前的 Refresh Token，用户需要重新登录；新数据库已由 `mysql/init.sql` 创建该字段。
 
 迁移前请确认数据库当前结构和已执行过的脚本，先备份，再按迁移说明顺序执行。`20261014_reset_auth_schema.sql` 会删除指定认证及业务表数据，仅适用于明确要重置数据的场景；不要把它作为常规升级脚本执行。

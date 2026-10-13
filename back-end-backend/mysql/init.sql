@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS `pms_user` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '雪花算法用户id',
   `login_name` VARCHAR(60) NOT NULL COMMENT '登录账号',
   `password` VARCHAR(255) NULL DEFAULT NULL COMMENT '密码哈希，第三方登录用户为空',
   `enable` TINYINT NOT NULL DEFAULT 0 COMMENT '账号状态：0正常、1锁定、2停用',
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS `pms_user` (
 
 CREATE TABLE IF NOT EXISTS `users` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '关联pms_user.user_id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '关联pms_user.user_id',
   `email` VARCHAR(100) NOT NULL COMMENT '用户邮箱',
   `nickname` VARCHAR(60) NULL COMMENT '用户昵称',
   `avatar` VARCHAR(255) NULL COMMENT '用户头像地址',
@@ -68,7 +68,7 @@ CREATE TABLE IF NOT EXISTS `roles` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='角色表';
 
 CREATE TABLE IF NOT EXISTS `user_roles` (
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '雪花算法用户id',
   `role_id` INT NOT NULL COMMENT '角色表id',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '授权时间',
   PRIMARY KEY (`user_id`, `role_id`),
@@ -89,7 +89,7 @@ ON DUPLICATE KEY UPDATE
 
 CREATE TABLE IF NOT EXISTS `oauth_identities` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '雪花算法用户id',
   `provider` ENUM('gitee', 'github') NOT NULL COMMENT '第三方平台',
   `provider_user_id` VARCHAR(100) NOT NULL COMMENT '第三方平台用户id',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS `oauth_identities` (
 CREATE TABLE IF NOT EXISTS `oauth_login_codes` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
   `code_hash` CHAR(64) NOT NULL COMMENT '登录交换码哈希',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '雪花算法用户id',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `oauth_states` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
   `state_hash` CHAR(64) NOT NULL COMMENT 'OAuth state哈希',
   `provider` ENUM('gitee', 'github') NOT NULL COMMENT '第三方平台',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '雪花算法用户id',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS `oauth_states` (
 CREATE TABLE IF NOT EXISTS `refresh_tokens` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
   `token_hash` CHAR(64) NOT NULL COMMENT 'Refresh Token哈希',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '雪花算法用户id',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS `files` (
   `mime_type` VARCHAR(100) NOT NULL COMMENT '文件MIME类型',
   `size` BIGINT NOT NULL COMMENT '文件大小（字节）',
   `path` VARCHAR(500) NOT NULL COMMENT '文件存储路径',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '雪花算法用户id',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '上传时间',
   PRIMARY KEY (`id`),
   KEY `idx_files_user_id` (`user_id`),
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS `logs` (
   `level` ENUM('info', 'warn', 'error') NOT NULL DEFAULT 'info' COMMENT '日志级别',
   `category` ENUM('event', 'http') NOT NULL DEFAULT 'event' COMMENT '日志类型',
   `message` TEXT NOT NULL COMMENT '日志内容',
-  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '雪花算法用户id',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NULL COMMENT '雪花算法用户id',
   `ip_address` VARCHAR(45) NULL COMMENT '请求来源IP',
   `user_agent` TEXT NULL COMMENT '请求客户端标识',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
