@@ -88,12 +88,25 @@ export function createAppConfiguration(env: Environment = process.env) {
     throw new Error('PREFIX must start with "/"');
   }
 
+  // 反代部署时设置为代理跳数（如 1）或子网，才能正确读取 request.ip；默认不信任代理头。
+  const trustProxyRaw = value(env, 'TRUST_PROXY', 'false').toLowerCase();
+  const trustProxy =
+    trustProxyRaw === 'true'
+      ? true
+      : trustProxyRaw === 'false'
+        ? false
+        : trustProxyRaw;
+
   return {
     nodeEnv,
     server: {
       host: value(env, 'SERVER_IP', '0.0.0.0'),
       port: integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535),
       staticPrefix: prefix,
+      trustProxy,
+      // 生产环境默认关闭 Swagger；设置 SWAGGER_ENABLED=true 可显式开启。
+      swaggerEnabled:
+        value(env, 'SWAGGER_ENABLED', isProduction ? 'false' : 'true').toLowerCase() === 'true',
     },
     corsOrigins,
     database: {

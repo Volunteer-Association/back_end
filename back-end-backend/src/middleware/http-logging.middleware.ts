@@ -14,6 +14,7 @@ export class HttpLoggingMiddleware implements NestMiddleware {
   constructor(
     private readonly logDirectory = resolve(process.cwd(), 'logs'),
     private readonly loggingService?: Pick<LoggingService, 'audit'>,
+    private readonly staticPrefix = '',
   ) {}
 
   use(request: Request, response: Response, next: NextFunction): void {
@@ -62,7 +63,14 @@ export class HttpLoggingMiddleware implements NestMiddleware {
         typeof requestUser.sub === 'string'
           ? requestUser.sub
           : undefined;
-      void this.writeDatabaseLog(level, entry, userId);
+      // 静态资源、健康检查和 Swagger 静态资源不入库，仅保留文件/控制台日志。
+      const staticPrefix = this.staticPrefix;
+      const isStatic = Boolean(staticPrefix) && entry.path.startsWith(staticPrefix + '/');
+      const isProbe =
+        entry.path === '/health' || entry.path.startsWith('/swagger');
+      if (!isStatic && !isProbe) {
+        void this.writeDatabaseLog(level, entry, userId);
+      }
       void this.writeFileLog(`http-${entry.timestamp.slice(0, 10)}.log`, line);
     });
 

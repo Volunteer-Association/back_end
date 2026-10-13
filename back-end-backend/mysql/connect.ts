@@ -18,5 +18,11 @@ export const MysqlConnection = TypeOrmModule.forRootAsync({
     synchronize: false,
     retryDelay: 500,
     retryAttempts: 10,
+    // 显式配置连接池：日常管理系统并发不高，默认 10 足够；长请求等待上限 60s。
+    extra: {
+      connectionLimit: 10,
+      waitForConnections: true,
+      queueLimit: 0,
+    },
   }),
 });

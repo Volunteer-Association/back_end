@@ -27,6 +27,21 @@ export default defineConfig(({ mode }) => {
           rewrite: (path: string) => path.replace(/^\/api/, '')
         }
       }
-    }
+    },
+    build: {
+      // 生产环境不生成 sourcemap，避免源码暴露与产物体积膨胀。
+      sourcemap: false,
+      rollupOptions: {
+        output: {
+          // 大体积第三方库单独分包，利用浏览器缓存并行加载。
+          manualChunks: {
+            three: ['three'],
+            tensorflow: ['@tensorflow/tfjs'],
+            vue: ['vue', 'vue-router', 'pinia'],
+            element: ['element-plus'],
+          },
+        },
+      },
+    },
   }
 })

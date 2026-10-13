@@ -12,7 +12,7 @@ services:
       MYSQL_USER: ${SQL_USERNAME:-${SQL_UESRNAME:-app_user}}
       MYSQL_PASSWORD: ${SQL_PASSWORD:-app_password}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
       - ./back-end-backend/mysql/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -78,7 +78,7 @@ services:
     container_name: back-end-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     networks:

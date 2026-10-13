@@ -4,6 +4,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { UsersModule } from '../users/users.module.js';
 import { MysqlModule } from '../../../mysql/mysql.module.js';
 import { AuthController } from './auth.controller.js';
+import { OAuthController } from './oauth.controller.js';
+import { ProfileController } from './profile.controller.js';
+import { AdminLogsController } from './admin-logs.controller.js';
+import { AuthResponseHelper } from './auth-response.helper.js';
 import { AuthService } from './auth.service.js';
 import { OAuthService } from './oauth.service.js';
 import { RegistrationService } from './registration.service.js';
@@ -27,13 +31,19 @@ import { LoginAttemptService } from './login-attempt.service.js';
       }),
     }),
   ],
-  controllers: [AuthController],
+  controllers: [
+    AuthController,
+    OAuthController,
+    ProfileController,
+    AdminLogsController,
+  ],
   providers: [
     AuthService,
     OAuthService,
     RegistrationService,
     RegistrationMailerService,
     LoginAttemptService,
+    AuthResponseHelper,
     AuthGuard,
   ],
   exports: [AuthService, AuthGuard, JwtModule],

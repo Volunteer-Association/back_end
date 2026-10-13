@@ -23,6 +23,8 @@ describe('application configuration', () => {
       host: '0.0.0.0',
       port: 3000,
       staticPrefix: '/static/file',
+      trustProxy: false,
+      swaggerEnabled: true,
     });
     expect(config.database).toMatchObject({
       host: 'db.example.test',
