@@ -48,19 +48,23 @@ CREATE TABLE IF NOT EXISTS `email_verifications` (
   `email` VARCHAR(100) NOT NULL COMMENT '待验证邮箱',
   `code_hash` CHAR(64) NOT NULL COMMENT '验证码HMAC摘要',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
-  `used_at` DATETIME NULL COMMENT '使用时间',
+  `last_sent_at` DATETIME NOT NULL COMMENT '最近发送时间',
+  `attempts` TINYINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '已尝试次数',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  KEY `idx_email_verifications_email` (`email`)
+  UNIQUE KEY `uq_email_verifications_email` (`email`),
+  KEY `idx_email_verifications_expires_at` (`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='注册邮箱验证码';
 
 CREATE TABLE IF NOT EXISTS `roles` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `code` VARCHAR(40) NOT NULL COMMENT '角色编码',
-  `name` VARCHAR(60) NOT NULL COMMENT '角色名称',
-  `description` VARCHAR(200) NULL COMMENT '角色描述',
+  `role_key` VARCHAR(50) NOT NULL COMMENT '角色标识',
+  `name` VARCHAR(100) NOT NULL COMMENT '角色名称',
+  `description` VARCHAR(255) NULL COMMENT '角色说明',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_roles_code` (`code`)
+  UNIQUE KEY `uq_roles_role_key` (`role_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='角色表';
 
 CREATE TABLE IF NOT EXISTS `user_roles` (
@@ -76,13 +80,11 @@ CREATE TABLE IF NOT EXISTS `user_roles` (
 CREATE TABLE IF NOT EXISTS `oauth_identities` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '雪花算法用户id',
-  `provider` VARCHAR(30) NOT NULL COMMENT '第三方平台：gitee/github',
-  `openid` VARCHAR(100) NOT NULL COMMENT '第三方平台唯一ID',
-  `nickname` VARCHAR(100) NULL COMMENT '第三方昵称',
-  `avatar_url` VARCHAR(255) NULL COMMENT '第三方头像',
-  `linked_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '绑定时间',
+  `provider` ENUM('gitee', 'github') NOT NULL COMMENT '第三方平台',
+  `provider_user_id` VARCHAR(100) NOT NULL COMMENT '第三方平台用户id',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_oauth_provider_openid` (`provider`, `openid`),
+  UNIQUE KEY `uq_oauth_provider_user` (`provider`, `provider_user_id`),
   KEY `idx_oauth_identities_user_id` (`user_id`),
   CONSTRAINT `fk_oauth_identities_user`
     FOREIGN KEY (`user_id`) REFERENCES `pms_user` (`user_id`) ON DELETE CASCADE
@@ -90,26 +92,26 @@ CREATE TABLE IF NOT EXISTS `oauth_identities` (
 
 CREATE TABLE IF NOT EXISTS `oauth_login_codes` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `provider` VARCHAR(30) NOT NULL COMMENT '平台',
-  `code` VARCHAR(200) NOT NULL COMMENT '临时交换码',
+  `code_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT '登录交换码哈希',
+  `provider` ENUM('gitee', 'github') NOT NULL COMMENT '第三方平台',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '雪花算法用户id',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
   `used_at` DATETIME NULL COMMENT '使用时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_oauth_login_codes_code` (`code`(191))
+  UNIQUE KEY `uq_oauth_login_codes_code_hash` (`code_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='OAuth登录交换码表';
 
 CREATE TABLE IF NOT EXISTS `oauth_states` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
-  `state` VARCHAR(100) NOT NULL COMMENT 'CSRF校验随机串',
-  `provider` VARCHAR(30) NOT NULL COMMENT '平台',
+  `state_hash` CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL COMMENT 'OAuth state哈希',
+  `provider` ENUM('gitee', 'github') NOT NULL COMMENT '第三方平台',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '雪花算法用户id',
   `expires_at` DATETIME NOT NULL COMMENT '过期时间',
   `used_at` DATETIME NULL COMMENT '使用时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_oauth_states_state` (`state`)
+  UNIQUE KEY `uq_oauth_states_state_hash` (`state_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='OAuth状态表';
 
 CREATE TABLE IF NOT EXISTS `refresh_tokens` (
@@ -151,17 +153,17 @@ CREATE TABLE IF NOT EXISTS `files` (
 
 CREATE TABLE IF NOT EXISTS `logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
+  `level` ENUM('info', 'warn', 'error') NOT NULL DEFAULT 'info' COMMENT '日志级别',
+  `category` ENUM('event', 'http') NOT NULL DEFAULT 'event' COMMENT '日志类型',
+  `message` TEXT NOT NULL COMMENT '日志内容',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '雪花算法用户id',
-  `type` VARCHAR(40) NOT NULL COMMENT '日志类型：event/http/error',
-  `level` VARCHAR(20) NOT NULL COMMENT '日志级别：info/warn/error',
-  `event` VARCHAR(255) NOT NULL COMMENT '事件描述',
-  `ip` VARCHAR(45) NULL COMMENT '来源IP',
-  `user_agent` VARCHAR(255) NULL COMMENT 'User-Agent',
-  `request_id` VARCHAR(64) NULL COMMENT '请求追踪ID',
+  `ip_address` VARCHAR(45) NULL COMMENT '请求来源IP',
+  `user_agent` TEXT NULL COMMENT '请求客户端标识',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   KEY `idx_logs_created_at` (`created_at`),
-  KEY `idx_logs_type_level` (`type`, `level`),
+  KEY `idx_logs_level` (`level`),
+  KEY `idx_logs_category` (`category`),
   KEY `idx_logs_user_id` (`user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='审计日志表';
 
@@ -227,16 +229,17 @@ CREATE TABLE IF NOT EXISTS `balance_transactions` (
 -- ===== 数据字典 =====
 
 CREATE TABLE IF NOT EXISTS `dict_items` (
-  `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  `dict_type` VARCHAR(50) NOT NULL COMMENT '字典类型（如 bill_category）',
-  `dict_key` VARCHAR(50) NOT NULL COMMENT '字典键（如 income/expense）',
-  `dict_label` VARCHAR(100) NOT NULL COMMENT '显示名称',
-  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序',
-  `is_enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '雪花算法字典项ID',
+  `dict_type` VARCHAR(64) NOT NULL COMMENT '字典类型，如 bill_category',
+  `dict_key` VARCHAR(64) NOT NULL COMMENT '字典分组键，如 income / expense',
+  `item_value` VARCHAR(64) NOT NULL COMMENT '字典项显示值',
+  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序，小在前',
+  `enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_dict_type_key` (`dict_type`, `dict_key`)
+  UNIQUE KEY `uq_dict_type_key` (`dict_type`, `dict_key`),
+  KEY `idx_dict_type_key` (`dict_type`, `dict_key`, `sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='数据字典表';
 
 -- ===== 幂等性 =====
