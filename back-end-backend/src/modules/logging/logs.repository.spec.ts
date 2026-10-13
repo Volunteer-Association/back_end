@@ -14,6 +14,7 @@ describe('LogsRepository.findPage', () => {
   };
   const repository = {
     createQueryBuilder: jest.fn(),
+    insert: jest.fn(),
   };
   let logsRepository: LogsRepository;
 
@@ -82,5 +83,20 @@ describe('LogsRepository.findPage', () => {
     );
     expect(queryBuilder.skip).toHaveBeenCalledWith(40);
     expect(queryBuilder.take).toHaveBeenCalledWith(20);
+  });
+
+  it('stores non-request audit actions as event logs by default', async () => {
+    await logsRepository.create({
+      level: 'info',
+      message: 'password_login_succeeded',
+    });
+
+    expect(repository.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'event',
+        level: 'info',
+        message: 'password_login_succeeded',
+      }),
+    );
   });
 });

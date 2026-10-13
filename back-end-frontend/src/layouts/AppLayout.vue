@@ -6,12 +6,13 @@
         <RouterLink :to="{ name: 'home' }">首页</RouterLink>
         <RouterLink :to="{ name: 'upload' }">文件上传</RouterLink>
         <RouterLink :to="{ name: 'about' }">关于</RouterLink>
+        <RouterLink :to="{ name: 'user-profile' }">个人资料</RouterLink>
         <RouterLink :to="{ name: 'account' }">账号绑定</RouterLink>
         <RouterLink
           v-if="auth.user?.role === 'admin'"
           :to="{ name: 'admin-logs' }"
         >
-          审计日志
+          系统日志
         </RouterLink>
         <RouterLink :to="{ name: 'three' }">3D 展示</RouterLink>
         <RouterLink :to="{ name: 'aidemo' }">AI 项目</RouterLink>

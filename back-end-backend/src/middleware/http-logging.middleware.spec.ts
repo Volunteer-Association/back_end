@@ -52,6 +52,7 @@ describe('HttpLoggingMiddleware', () => {
       path: '/users',
       originalUrl: '/users?access_token=secret',
       ip: '127.0.0.1',
+      user: { sub: '12345' },
     } as Request;
     middleware.use(request, response(), next as unknown as NextFunction);
 
@@ -69,6 +70,14 @@ describe('HttpLoggingMiddleware', () => {
     );
     expect(loggedEntry.level).toBe('info');
     expect(loggedEntry.message).toContain('HTTP GET /users returned 200');
+    expect(loggingService.audit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: 'info',
+        category: 'http',
+        userId: '12345',
+        message: expect.stringContaining('HTTP GET /users returned 200'),
+      }),
+    );
     expect(logged).toContain('"path":"/users"');
     expect(logged).not.toContain('access_token');
     expect(logged).not.toContain('secret');

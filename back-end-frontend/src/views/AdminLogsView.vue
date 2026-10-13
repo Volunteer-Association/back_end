@@ -4,7 +4,7 @@
       <template #header>
         <div class="page-heading">
           <div>
-            <h1>审计日志</h1>
+            <h1>系统日志</h1>
             <p>按数据库中的日志类型和等级筛选；支持服务端分页查询。</p>
           </div>
           <div class="filters">
@@ -15,8 +15,8 @@
               @change="changeFilter"
             >
               <el-option label="全部类型" value="all" />
-              <el-option label="HTTP 请求" value="http" />
-              <el-option label="审计事件" value="audit" />
+              <el-option label="HTTP 请求日志" value="http" />
+              <el-option label="事件日志" value="event" />
             </el-select>
             <el-select
               v-model="level"
@@ -98,7 +98,7 @@
             </div>
           </dl>
         </article>
-        <el-empty v-if="!loading && items.length === 0" description="暂无审计日志" />
+        <el-empty v-if="!loading && items.length === 0" description="暂无日志" />
       </div>
 
       <el-pagination
@@ -144,7 +144,7 @@ function levelType(value: AuditLog['level']) {
 }
 
 function categoryText(value: AuditLog['category']) {
-  return { audit: '审计事件', http: 'HTTP 请求' }[value]
+  return { event: '事件日志', http: 'HTTP 请求日志' }[value]
 }
 
 function formatDate(value: string) {

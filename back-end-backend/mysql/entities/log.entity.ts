@@ -10,7 +10,7 @@ import {
 import { UserEntity } from './user.entity.js';
 
 export type LogLevel = 'info' | 'warn' | 'error';
-export type LogCategory = 'audit' | 'http';
+export type LogCategory = 'event' | 'http';
 
 @Entity({ name: 'logs' })
 @Index('idx_logs_created_at', ['createdAt'])
@@ -30,8 +30,8 @@ export class LogEntity {
 
   @Column({
     type: 'enum',
-    enum: ['audit', 'http'],
-    default: 'audit',
+    enum: ['event', 'http'],
+    default: 'event',
     comment: '日志类型',
   })
   category: LogCategory;

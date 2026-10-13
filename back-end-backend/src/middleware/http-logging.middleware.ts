@@ -43,17 +43,24 @@ export class HttpLoggingMiddleware implements NestMiddleware {
       const line = JSON.stringify(entry);
       if (entry.level === 'error') {
         this.logger.error(line);
-        void this.writeDatabaseLog('error', entry);
         void this.writeFileLog(
           `error-${entry.timestamp.slice(0, 10)}.log`,
           line,
         );
       } else if (entry.level === 'warn') {
         this.logger.warn(line);
-        void this.writeDatabaseLog('warn', entry);
       } else {
         this.logger.log(line);
       }
+      const requestUser = (request as Request & { user?: unknown }).user;
+      const userId =
+        requestUser &&
+        typeof requestUser === 'object' &&
+        'sub' in requestUser &&
+        typeof requestUser.sub === 'string'
+          ? requestUser.sub
+          : undefined;
+      void this.writeDatabaseLog(level, entry, userId);
       void this.writeFileLog(`http-${entry.timestamp.slice(0, 10)}.log`, line);
     });
 
@@ -61,7 +68,7 @@ export class HttpLoggingMiddleware implements NestMiddleware {
   }
 
   private async writeDatabaseLog(
-    level: 'warn' | 'error',
+    level: LogLevel,
     entry: {
       requestId: string;
       method: string;
@@ -72,12 +79,14 @@ export class HttpLoggingMiddleware implements NestMiddleware {
       message: string;
       userAgent?: string;
     },
+    userId?: string,
   ): Promise<void> {
     if (!this.loggingService) return;
     await this.loggingService.audit({
       level,
       category: 'http',
       message: `${entry.message} request_id=${entry.requestId}`,
+      userId,
       ipAddress: entry.ip,
       userAgent: entry.userAgent,
     });

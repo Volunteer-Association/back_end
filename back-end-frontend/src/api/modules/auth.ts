@@ -37,7 +37,7 @@ export interface LoginResponse {
 export interface AuditLog {
   id: number
   level: 'info' | 'warn' | 'error'
-  category: 'audit' | 'http'
+  category: 'event' | 'http'
   message: string
   user: { id: string; username: string } | null
   ipAddress: string | null
@@ -45,7 +45,7 @@ export interface AuditLog {
   createdAt: string
 }
 
-export type AuditLogCategory = 'audit' | 'http'
+export type AuditLogCategory = 'event' | 'http'
 
 export type OAuthProvider = 'gitee' | 'github'
 

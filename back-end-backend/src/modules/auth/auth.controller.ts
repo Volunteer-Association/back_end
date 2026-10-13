@@ -601,8 +601,8 @@ export class AuthController {
   @ApiQuery({
     name: 'category',
     required: false,
-    description: '按日志类型过滤：HTTP 请求日志或其他审计事件。',
-    enum: ['http', 'audit'],
+    description: '按日志类型过滤：HTTP 请求日志或事件日志。',
+    enum: ['http', 'event'],
   })
   @ApiResponse({
     status: 200,
@@ -612,7 +612,7 @@ export class AuthController {
         items: [
           {
             level: 'info',
-            category: 'audit',
+            category: 'event',
             message: 'password_login_succeeded',
             id: 1,
             user: { id: '1234567890123456789', username: 'sample' },
@@ -657,7 +657,7 @@ export class AuthController {
     }
     let category: AuditLogCategory | undefined;
     if (categoryValue !== undefined) {
-      if (!['http', 'audit'].includes(categoryValue)) {
+      if (!['http', 'event'].includes(categoryValue)) {
         throw new BadRequestException('日志类型无效');
       }
       category = categoryValue as AuditLogCategory;

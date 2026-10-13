@@ -40,7 +40,7 @@ export class LogsRepository {
   async create(input: CreateLogInput): Promise<void> {
     await this.repository.insert({
       level: input.level,
-      category: input.category ?? 'audit',
+      category: input.category ?? 'event',
       message: input.message.slice(0, 2000),
       user: input.userId ? { userId: input.userId } : null,
       ipAddress: input.ipAddress?.slice(0, 45) ?? null,
