@@ -260,7 +260,8 @@ export class PaymentsService {
         balance.version += 1;
         await manager.save(balance);
       } else {
-        // 理论上不会发生（余额不足已拦截），兜底创建一条
+        // 极端并发兜底：理论上 current=0 < amount 已抛错，不会走到这里
+        // 但如果真走到，创建一条记录（此时 after 必为负，说明数据有问题）
         await manager.save(
           manager.create(UserBalanceEntity, {
             userId: params.userId,
@@ -328,11 +329,23 @@ export class PaymentsService {
 
     const transferId = await this.idGenerator.nextId();
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
-      // 锁 A 余额
-      const fromBal = await manager.findOne(UserBalanceEntity, {
-        where: { userId: fromUserId },
+      // 按 userId 字典序排序锁，防止 A→B 和 B→A 并发时死锁
+      const [firstLockId, secondLockId] = [fromUserId, toUserId].sort();
+
+      // 先锁第一个用户的余额，再锁第二个
+      const bal1 = await manager.findOne(UserBalanceEntity, {
+        where: { userId: firstLockId },
         lock: { mode: 'pessimistic_write' },
       });
+      const bal2 = await manager.findOne(UserBalanceEntity, {
+        where: { userId: secondLockId },
+        lock: { mode: 'pessimistic_write' },
+      });
+
+      // 根据 fromUserId 判断哪个是转出方余额记录
+      const fromBal = fromUserId === firstLockId ? bal1 : bal2;
+      const toBalRaw = toUserId === firstLockId ? bal1 : bal2;
+
       const fromCurrent = fromBal ? Number(fromBal.balanceCents) : 0;
       if (fromCurrent < amountCents) {
         throw new BadRequestException(
@@ -346,11 +359,8 @@ export class PaymentsService {
         await manager.save(fromBal);
       }
 
-      // 锁 B 余额
-      let toBal = await manager.findOne(UserBalanceEntity, {
-        where: { userId: toUserId },
-        lock: { mode: 'pessimistic_write' },
-      });
+      // 转入方余额（不存在则创建）
+      let toBal = toBalRaw;
       if (!toBal) {
         toBal = manager.create(UserBalanceEntity, {
           userId: toUserId,

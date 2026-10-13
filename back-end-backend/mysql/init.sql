@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS `bills` (
   `amount` DECIMAL(12, 2) NOT NULL COMMENT '金额',
   `transaction_date` DATE NOT NULL COMMENT '交易日期',
   `note` VARCHAR(500) NULL COMMENT '备注',
+  `paid_at` DATETIME NULL COMMENT '支付时间（已支付账单才有值）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -200,3 +201,71 @@ CREATE TABLE IF NOT EXISTS `bills` (
   CONSTRAINT `fk_bills_user`
     FOREIGN KEY (`user_id`) REFERENCES `pms_user` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='个人收支账单';
+
+-- ===== 钱包支付系统 =====
+
+CREATE TABLE IF NOT EXISTS `user_balances` (
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '用户ID',
+  `balance_cents` BIGINT NOT NULL DEFAULT 0 COMMENT '账户余额，单位分',
+  `version` INT NOT NULL DEFAULT 0 COMMENT '乐观锁版本号',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='用户余额表';
+
+CREATE TABLE IF NOT EXISTS `recharge_orders` (
+  `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '充值单号',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `amount_cents` BIGINT NOT NULL COMMENT '充值金额，单位分',
+  `channel` ENUM('alipay', 'wechat', 'bank') NOT NULL COMMENT '充值渠道',
+  `status` ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT '审核状态',
+  `user_note` VARCHAR(200) NULL COMMENT '用户备注',
+  `reviewed_by` VARCHAR(30) NULL COMMENT '审核人',
+  `review_note` VARCHAR(200) NULL COMMENT '审核备注',
+  `reviewed_at` DATETIME NULL COMMENT '审核时间',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_recharges_user` (`user_id`),
+  KEY `idx_recharges_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='充值申请表';
+
+CREATE TABLE IF NOT EXISTS `balance_transactions` (
+  `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '流水号',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust') NOT NULL,
+  `amount_cents` BIGINT NOT NULL COMMENT '变动金额，带符号，单位分',
+  `balance_after_cents` BIGINT NOT NULL COMMENT '变动后余额，单位分',
+  `ref_type` VARCHAR(32) NULL COMMENT '关联业务类型',
+  `ref_id` VARCHAR(30) NULL COMMENT '关联业务单号',
+  `note` VARCHAR(200) NULL COMMENT '流水说明',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_txn_user_created` (`user_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='余额流水表';
+
+-- ===== 数据字典 =====
+
+CREATE TABLE IF NOT EXISTS `dict_items` (
+  `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `dict_type` VARCHAR(50) NOT NULL COMMENT '字典类型（如 bill_category）',
+  `dict_key` VARCHAR(50) NOT NULL COMMENT '字典键（如 income/expense）',
+  `dict_label` VARCHAR(100) NOT NULL COMMENT '显示名称',
+  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序',
+  `is_enabled` TINYINT NOT NULL DEFAULT 1 COMMENT '是否启用',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_dict_type_key` (`dict_type`, `dict_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='数据字典表';
+
+-- ===== 幂等性 =====
+
+CREATE TABLE IF NOT EXISTS `idempotency_keys` (
+  `idem_key` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '幂等键（前端 UUID）',
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `action` VARCHAR(32) NOT NULL COMMENT '操作类型（transfer/refund/adjust）',
+  `response_json` MEDIUMTEXT NOT NULL COMMENT '第一次的响应缓存',
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`idem_key`),
+  KEY `idx_idem_user` (`user_id`, `action`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='幂等性记录表';
