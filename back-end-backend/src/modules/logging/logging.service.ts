@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   LogsRepository,
+  type AuditLogCategory,
   type CreateLogInput,
 } from '../../../mysql/repositories/logs.repository.js';
 
@@ -21,7 +22,12 @@ export class LoggingService {
     }
   }
 
-  async findPage(page: number, limit: number, level?: CreateLogInput['level']) {
-    return this.logsRepository.findPage(page, limit, level);
+  async findPage(
+    page: number,
+    limit: number,
+    level?: CreateLogInput['level'],
+    category?: AuditLogCategory,
+  ) {
+    return this.logsRepository.findPage(page, limit, level, category);
   }
 }

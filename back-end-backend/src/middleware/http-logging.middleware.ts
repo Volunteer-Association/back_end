@@ -76,6 +76,7 @@ export class HttpLoggingMiddleware implements NestMiddleware {
     if (!this.loggingService) return;
     await this.loggingService.audit({
       level,
+      category: 'http',
       message: `${entry.message} request_id=${entry.requestId}`,
       ipAddress: entry.ip,
       userAgent: entry.userAgent,

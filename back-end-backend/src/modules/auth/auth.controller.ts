@@ -39,6 +39,7 @@ import { AuthGuard } from '../../guards/auth.guard.js';
 import { REFRESH_TOKEN_TTL_SECONDS } from '../../../config/auth.constants.js';
 import { LoggingService } from '../logging/logging.service.js';
 import type { LogLevel } from '../../../mysql/entities/log.entity.js';
+import type { AuditLogCategory } from '../../../mysql/repositories/logs.repository.js';
 import { SendRegistrationCodeDto } from './dto/send-registration-code.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { SetPasswordDto } from './dto/set-password.dto.js';
@@ -597,6 +598,12 @@ export class AuthController {
     description: '按日志级别过滤。',
     enum: ['info', 'warn', 'error'],
   })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    description: '按日志类型过滤：HTTP 请求日志或其他审计事件。',
+    enum: ['http', 'audit'],
+  })
   @ApiResponse({
     status: 200,
     description: '日志分页数据。',
@@ -604,9 +611,10 @@ export class AuthController {
       example: {
         items: [
           {
-            id: 1,
             level: 'info',
+            category: 'audit',
             message: 'password_login_succeeded',
+            id: 1,
             user: { id: '1234567890123456789', username: 'sample' },
             ipAddress: '127.0.0.1',
             userAgent: 'Mozilla/5.0',
@@ -627,6 +635,7 @@ export class AuthController {
     @Query('page') pageValue?: string,
     @Query('limit') limitValue?: string,
     @Query('level') levelValue?: string,
+    @Query('category') categoryValue?: string,
   ) {
     const user = request.user;
     if (
@@ -646,7 +655,14 @@ export class AuthController {
       }
       level = levelValue as LogLevel;
     }
-    return this.loggingService.findPage(page, limit, level);
+    let category: AuditLogCategory | undefined;
+    if (categoryValue !== undefined) {
+      if (!['http', 'audit'].includes(categoryValue)) {
+        throw new BadRequestException('日志类型无效');
+      }
+      category = categoryValue as AuditLogCategory;
+    }
+    return this.loggingService.findPage(page, limit, level, category);
   }
 
   @Get('auth/oauth/:provider/callback')

@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS `files` (
 CREATE TABLE IF NOT EXISTS `logs` (
   `id` INT NOT NULL AUTO_INCREMENT COMMENT '表id',
   `level` ENUM('info', 'warn', 'error') NOT NULL DEFAULT 'info' COMMENT '日志级别',
+  `category` ENUM('audit', 'http') NOT NULL DEFAULT 'audit' COMMENT '日志类型',
   `message` TEXT NOT NULL COMMENT '日志内容',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NULL COMMENT '雪花算法用户id',
   `ip_address` VARCHAR(45) NULL COMMENT '请求来源IP',
@@ -167,6 +168,7 @@ CREATE TABLE IF NOT EXISTS `logs` (
   PRIMARY KEY (`id`),
   KEY `idx_logs_created_at` (`created_at`),
   KEY `idx_logs_level` (`level`),
+  KEY `idx_logs_category` (`category`),
   KEY `idx_logs_user_id` (`user_id`),
   CONSTRAINT `fk_logs_user`
     FOREIGN KEY (`user_id`) REFERENCES `pms_user` (`user_id`) ON DELETE SET NULL

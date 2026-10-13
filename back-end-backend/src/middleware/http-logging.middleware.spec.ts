@@ -101,6 +101,7 @@ describe('HttpLoggingMiddleware', () => {
     expect(loggingService.audit).toHaveBeenLastCalledWith(
       expect.objectContaining({
         level: 'warn',
+        category: 'http',
         message: expect.stringContaining('returned 404'),
       }),
     );
@@ -117,6 +118,7 @@ describe('HttpLoggingMiddleware', () => {
     expect(loggingService.audit).toHaveBeenLastCalledWith(
       expect.objectContaining({
         level: 'error',
+        category: 'http',
         message: expect.stringContaining('returned 500'),
       }),
     );

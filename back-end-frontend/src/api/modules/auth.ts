@@ -37,12 +37,15 @@ export interface LoginResponse {
 export interface AuditLog {
   id: number
   level: 'info' | 'warn' | 'error'
+  category: 'audit' | 'http'
   message: string
   user: { id: string; username: string } | null
   ipAddress: string | null
   userAgent: string | null
   createdAt: string
 }
+
+export type AuditLogCategory = 'audit' | 'http'
 
 export type OAuthProvider = 'gitee' | 'github'
 
@@ -151,6 +154,7 @@ export function getAuditLogs(params: {
   page: number
   limit: number
   level?: AuditLog['level']
+  category?: AuditLogCategory
 }) {
   return request.get<{
     items: AuditLog[]

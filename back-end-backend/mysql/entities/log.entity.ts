@@ -10,10 +10,12 @@ import {
 import { UserEntity } from './user.entity.js';
 
 export type LogLevel = 'info' | 'warn' | 'error';
+export type LogCategory = 'audit' | 'http';
 
 @Entity({ name: 'logs' })
 @Index('idx_logs_created_at', ['createdAt'])
 @Index('idx_logs_level', ['level'])
+@Index('idx_logs_category', ['category'])
 export class LogEntity {
   @PrimaryGeneratedColumn({ comment: '表id' })
   id: number;
@@ -25,6 +27,14 @@ export class LogEntity {
     comment: '日志级别',
   })
   level: LogLevel;
+
+  @Column({
+    type: 'enum',
+    enum: ['audit', 'http'],
+    default: 'audit',
+    comment: '日志类型',
+  })
+  category: LogCategory;
 
   @Column({ type: 'text', comment: '日志内容' })
   message: string;

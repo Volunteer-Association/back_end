@@ -19,7 +19,7 @@ export {
 };
 export type { UserRole, UserStatus } from './user.entity.js';
 export type { OAuthProvider } from './oauth-identity.entity.js';
-export type { LogLevel } from './log.entity.js';
+export type { LogCategory, LogLevel } from './log.entity.js';
 
 export const DATABASE_ENTITIES = [
   UserEntity,
