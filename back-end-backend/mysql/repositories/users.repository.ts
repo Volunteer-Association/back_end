@@ -11,6 +11,7 @@ export interface EditableUserProfile {
   nickname?: string | null;
   mobile?: string | null;
   sex?: number;
+  avatar?: string | null;
 }
 
 export interface UserProfile {

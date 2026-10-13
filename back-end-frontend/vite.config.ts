@@ -25,6 +25,11 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
           changeOrigin: true,
           rewrite: (path: string) => path.replace(/^\/api/, '')
+        },
+        // 本地静态文件（头像等）由后端 public/ 目录提供
+        '/static/file': {
+          target: env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
+          changeOrigin: true,
         }
       }
     },

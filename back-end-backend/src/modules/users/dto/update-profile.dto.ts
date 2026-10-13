@@ -38,4 +38,15 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsIn([0, 1, 2])
   sex?: number;
+
+  @ApiPropertyOptional({
+    description: '头像 URL；上传头像后将返回的 URL 传到此字段。',
+    example: '/static/file/avatars/abc.png',
+    maxLength: 255,
+    nullable: true,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  avatar?: string | null;
 }

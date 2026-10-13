@@ -139,8 +139,18 @@ export function updateUserProfile(data: {
   nickname?: string | null
   mobile?: string | null
   sex?: number
+  avatar?: string | null
 }) {
   return request.patch<UserProfile>('/auth/profile', data)
+}
+
+/** 上传头像，返回 { url }；后端会自动写入用户资料。 */
+export function uploadAvatar(file: File) {
+  const form = new FormData()
+  form.append('file', file)
+  return request.post<{ url: string }>('/auth/avatar', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }
 
 /** 获取当前账号的多设备登录设置。 */
