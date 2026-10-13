@@ -63,6 +63,7 @@ export function listMyTxns() {
 export function transfer(input: {
   toAccount: string
   amountCents: number
+  requestId: string
   note?: string | null
 }) {
   return request.post<{
@@ -152,4 +153,43 @@ export function adminReconcile(startDate?: string, endDate?: string) {
   return request.get<ReconcileReport>('/admin/wallet/reconcile', {
     params: { startDate, endDate },
   })
+}
+
+export interface UserReconcileRow {
+  userId: string
+  email: string | null
+  nickname: string | null
+  balanceCents: number
+  balanceYuan: string
+  txnSumCents: number
+  txnSumYuan: string
+  txnCount: number
+  diffCents: number
+  diffYuan: string
+  balanced: boolean
+}
+
+export interface DailyReconcileRow {
+  date: string
+  totalCents: number
+  count: number
+  byType: Record<string, number>
+}
+
+export function adminReconcileByUser() {
+  return request.get<UserReconcileRow[]>('/admin/wallet/reconcile/by-user')
+}
+
+export function adminReconcileDaily(days = 30) {
+  return request.get<DailyReconcileRow[]>('/admin/wallet/reconcile/daily', {
+    params: { days },
+  })
+}
+
+export function adminAdjust(input: {
+  targetUserId: string
+  amountCents: number
+  note?: string
+}) {
+  return request.post<BalanceTxn>('/admin/wallet/adjust', input)
 }

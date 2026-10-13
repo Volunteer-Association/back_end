@@ -117,6 +117,12 @@
                 type="success"
                 @click="payNow(row)"
               >支付</el-button>
+              <el-button
+                v-if="row.type === 'expense' && row.paidAt"
+                text
+                type="warning"
+                @click="refundNow(row)"
+              >退款</el-button>
               <el-button text type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button text type="danger" @click="confirmDelete(row)">删除</el-button>
             </template>
@@ -151,6 +157,12 @@
                   type="success"
                   @click="payNow(item)"
                 >支付</el-button>
+                <el-button
+                  v-if="item.type === 'expense' && item.paidAt"
+                  text
+                  type="warning"
+                  @click="refundNow(item)"
+                >退款</el-button>
                 <el-button text type="primary" @click="openEdit(item)">编辑</el-button>
                 <el-button text type="danger" @click="confirmDelete(item)">删除</el-button>
               </span>
@@ -249,6 +261,7 @@ import {
   getBillSummary,
   getBills,
   payBill,
+  refundBill,
   updateBill,
   type Bill,
   type BillInput,
@@ -482,6 +495,26 @@ async function payNow(bill: Bill) {
     const msg =
       (e as { message?: string })?.message || '支付失败，请稍后重试'
     ElMessage.error(msg)
+  }
+}
+
+async function refundNow(bill: Bill) {
+  try {
+    await ElMessageBox.confirm(
+      `将把 ¥${formatAmount(bill.amount)} 退回你的余额，账单变回待支付状态，确认退款？`,
+      '账单退款',
+      { confirmButtonText: '确认退款', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const updated = await refundBill(bill.id)
+    ElMessage.success('退款成功，金额已退回余额')
+    const idx = items.value.findIndex((b) => b.id === bill.id)
+    if (idx >= 0) items.value[idx] = updated
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '退款失败，请稍后重试')
   }
 }
 

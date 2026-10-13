@@ -3,7 +3,11 @@
     <PageHeader
       title="钱包对账"
       description="全局余额、流水汇总与平衡校验；仅管理员可见。"
-    />
+    >
+      <template #actions>
+        <el-button type="primary" @click="adjustVisible = true">余额调整</el-button>
+      </template>
+    </PageHeader>
 
     <el-card shadow="never" class="filter-card">
       <el-form inline>
@@ -55,6 +59,87 @@
           <template #default="{ row }">
             <span :class="row.cents >= 0 ? 'amount-income' : 'amount-expense'">
               {{ row.cents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.cents) / 100).toFixed(2) }}
+            </span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 逐用户对账排查 -->
+    <el-card shadow="never">
+      <template #header>
+        <div class="card-header-row">
+          <strong>逐用户对账排查</strong>
+          <el-tag v-if="unbalancedUsers.length === 0" type="success" size="small">全部平衡</el-tag>
+          <el-tag v-else type="danger" size="small">{{ unbalancedUsers.length }} 个用户不平衡</el-tag>
+        </div>
+      </template>
+      <el-table :data="userRows" stripe max-height="400">
+        <el-table-column label="用户" min-width="180">
+          <template #default="{ row }">
+            <div>{{ row.nickname || row.email || row.userId }}</div>
+            <div class="muted mono">{{ row.userId }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="余额表" width="120">
+          <template #default="{ row }">¥{{ row.balanceYuan }}</template>
+        </el-table-column>
+        <el-table-column label="流水加总" width="120">
+          <template #default="{ row }">¥{{ row.txnSumYuan }}</template>
+        </el-table-column>
+        <el-table-column label="流水笔数" width="90">
+          <template #default="{ row }">{{ row.txnCount }}</template>
+        </el-table-column>
+        <el-table-column label="差异" width="120">
+          <template #default="{ row }">
+            <span :class="row.balanced ? 'muted' : 'amount-expense'">
+              {{ row.diffYuan === '0.00' ? '—' : (row.diffCents >= 0 ? '+' : '') + '¥' + row.diffYuan }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag v-if="row.balanced" type="success" size="small">平衡</el-tag>
+            <el-tag v-else type="danger" size="small">异常</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button
+              v-if="!row.balanced"
+              size="small"
+              type="warning"
+              @click="openFix(row)"
+            >
+              修复
+            </el-button>
+            <span v-else class="muted">—</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 按天流水趋势 -->
+    <el-card shadow="never">
+      <template #header>
+        <strong>最近 30 天流水趋势</strong>
+      </template>
+      <el-table :data="dailyRows" stripe max-height="300">
+        <el-table-column prop="date" label="日期" width="120" />
+        <el-table-column label="当日净变动" width="130">
+          <template #default="{ row }">
+            <span :class="row.totalCents >= 0 ? 'amount-income' : 'amount-expense'">
+              {{ row.totalCents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.totalCents) / 100).toFixed(2) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="笔数" width="80">
+          <template #default="{ row }">{{ row.count }}</template>
+        </el-table-column>
+        <el-table-column label="分类明细" min-width="300">
+          <template #default="{ row }">
+            <span v-for="(v, k) in row.byType" :key="k" class="daily-type">
+              {{ typeLabel(k) }} {{ v >= 0 ? '+' : '−' }}¥{{ (Math.abs(v) / 100).toFixed(2) }}
             </span>
           </template>
         </el-table-column>
@@ -127,18 +212,67 @@
         @size-change="loadTxns"
       />
     </el-card>
+
+    <el-dialog
+      v-model="adjustVisible"
+      title="余额调整"
+      width="min(480px, calc(100vw - 32px))"
+      destroy-on-close
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        title="管理员手工调整"
+        description="正金额=给用户加钱，负金额=扣用户余额。调整会写 adjust 流水，可在流水明细中追溯。"
+        show-icon
+      />
+      <el-form :model="adjustForm" label-position="top" style="margin-top: 12px">
+        <el-form-item label="目标用户 ID" required>
+          <el-input v-model.trim="adjustForm.targetUserId" placeholder="u_xxx" />
+        </el-form-item>
+        <el-form-item label="金额（元，正=加/负=扣）" required>
+          <el-input v-model="adjustForm.amountYuan" placeholder="如 50 或 -20">
+            <template #prepend>¥</template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="调整原因">
+          <el-input v-model="adjustForm.note" type="textarea" :rows="2" placeholder="如：客服补偿、系统错误修正" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="adjustVisible = false">取消</el-button>
+        <el-button type="primary" :loading="adjusting" @click="submitAdjust">确认调整</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+/**
+ * 钱包对账页面（仅管理员可见）。
+ *
+ * 功能：
+ * - 三张统计卡：用户总余额、流水累计、平衡差异（应为 0）
+ * - 全量流水分类汇总（充值/消费/转出/转入/退款/调整）
+ * - 全局流水明细（支持按用户、类型过滤 + 分页）
+ * - 余额调整对话框（管理员手工加/减用户余额）
+ *
+ * 对账原理：用户总余额应该等于所有流水金额的代数和，
+ * 如果差异不为 0，说明有数据不一致需要排查。
+ */
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import {
+  adminAdjust,
   adminReconcile,
+  adminReconcileByUser,
+  adminReconcileDaily,
   adminWalletTransactions,
   type BalanceTxn,
+  type DailyReconcileRow,
   type ReconcileReport,
+  type UserReconcileRow,
 } from '@/api/modules/payments'
 
 const startDate = ref('')
@@ -153,6 +287,14 @@ const filterType = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
+
+const userRows = ref<UserReconcileRow[]>([])
+const dailyRows = ref<DailyReconcileRow[]>([])
+const unbalancedUsers = computed(() => userRows.value.filter((r) => !r.balanced))
+
+const adjustVisible = ref(false)
+const adjusting = ref(false)
+const adjustForm = reactive({ targetUserId: '', amountYuan: '', note: '' })
 
 const allTimeRows = computed(() => {
   if (!report.value) return []
@@ -214,7 +356,76 @@ async function loadTxns() {
 onMounted(() => {
   void load()
   void loadTxns()
+  void loadUserReconcile()
+  void loadDaily()
 })
+
+async function loadUserReconcile() {
+  try {
+    userRows.value = await adminReconcileByUser()
+  } catch {
+    /* 静默失败 */
+  }
+}
+
+async function loadDaily() {
+  try {
+    dailyRows.value = await adminReconcileDaily(30)
+  } catch {
+    /* 静默失败 */
+  }
+}
+
+/**
+ * 一键修复：打开调整对话框，自动填入用户 ID 和抹平差异所需的金额。
+ * 差异 diff = 余额表 - 流水加总
+ * 需要调整的金额 = -diff（让余额表向流水加总对齐）
+ */
+function openFix(row: UserReconcileRow) {
+  const fixCents = -row.diffCents
+  // 如果是扣钱且余额不足，提前提示
+  if (fixCents < 0 && row.balanceCents + fixCents < 0) {
+    ElMessage.warning(
+      `当前余额 ¥${row.balanceYuan}，需要扣 ¥${(Math.abs(fixCents) / 100).toFixed(2)}，扣后余额为负，无法直接修复。建议先给用户充值，或手动核对流水。`
+    )
+    return
+  }
+  adjustForm.targetUserId = row.userId
+  adjustForm.amountYuan = (fixCents / 100).toFixed(2)
+  adjustForm.note = `对账修复：用户 ${row.nickname || row.email || row.userId} 差异 ¥${row.diffYuan}`
+  adjustVisible.value = true
+}
+
+async function submitAdjust() {
+  if (!adjustForm.targetUserId.trim()) {
+    ElMessage.error('请输入目标用户 ID')
+    return
+  }
+  const cents = Math.round(Number(adjustForm.amountYuan) * 100)
+  if (!Number.isFinite(cents) || cents === 0) {
+    ElMessage.error('请输入非零金额')
+    return
+  }
+  adjusting.value = true
+  try {
+    await adminAdjust({
+      targetUserId: adjustForm.targetUserId.trim(),
+      amountCents: cents,
+      note: adjustForm.note || undefined,
+    })
+    ElMessage.success('调整完成')
+    adjustVisible.value = false
+    adjustForm.targetUserId = ''
+    adjustForm.amountYuan = ''
+    adjustForm.note = ''
+    // 刷新所有对账视图
+    await Promise.all([load(), loadTxns(), loadUserReconcile(), loadDaily()])
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '调整失败')
+  } finally {
+    adjusting.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -260,5 +471,18 @@ onMounted(() => {
 
 .muted {
   color: #c0c6d0;
+}
+
+.card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.daily-type {
+  display: inline-block;
+  margin-right: 12px;
+  font-size: 13px;
+  color: #475669;
 }
 </style>

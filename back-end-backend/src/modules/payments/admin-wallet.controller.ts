@@ -1,7 +1,9 @@
 import {
   Controller,
   ForbiddenException,
+  Body,
   Get,
+  Post,
   Query,
   Req,
   UseGuards,
@@ -9,6 +11,7 @@ import {
 import type { Request } from 'express';
 import {
   ApiBearerAuth,
+  ApiBody,
   ApiOperation,
   ApiQuery,
   ApiTags,
@@ -63,6 +66,50 @@ export class AdminWalletController {
   ) {
     this.assertAdmin(req);
     return this.payments.adminReconcile(startDate, endDate);
+  }
+
+  @Get('reconcile/by-user')
+  @ApiOperation({ summary: '逐用户对账：找出哪个用户余额和流水对不上' })
+  reconcileByUser(@Req() req: Request & { user?: Record<string, unknown> }) {
+    this.assertAdmin(req);
+    return this.payments.adminReconcileByUser();
+  }
+
+  @Get('reconcile/daily')
+  @ApiOperation({ summary: '按天汇总流水，定位是哪天开始不平' })
+  @ApiQuery({ name: 'days', required: false, description: '最近多少天，默认 30' })
+  reconcileDaily(
+    @Req() req: Request & { user?: Record<string, unknown> },
+    @Query('days') days?: string,
+  ) {
+    this.assertAdmin(req);
+    return this.payments.adminReconcileDaily(days ? Number(days) : 30);
+  }
+
+  @Post('adjust')
+  @ApiOperation({ summary: '管理员手工调整用户余额（正=加钱，负=扣钱）' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['targetUserId', 'amountCents'],
+      properties: {
+        targetUserId: { type: 'string', example: 'u_xxx' },
+        amountCents: { type: 'number', example: 5000, description: '分，正=加，负=扣' },
+        note: { type: 'string', example: '客服补偿' },
+      },
+    },
+  })
+  adjust(
+    @Req() req: Request & { user?: Record<string, unknown> },
+    @Body() body: { targetUserId: string; amountCents: number; note?: string },
+  ) {
+    this.assertAdmin(req);
+    return this.payments.adminAdjust({
+      adminId: String(req.user!.sub),
+      targetUserId: body.targetUserId,
+      amountCents: Number(body.amountCents),
+      note: body.note,
+    });
   }
 
   private assertAdmin(req: Request & { user?: Record<string, unknown> }) {

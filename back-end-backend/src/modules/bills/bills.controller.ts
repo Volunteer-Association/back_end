@@ -144,6 +144,24 @@ export class BillsController {
     return bill;
   }
 
+  @Post(':id/refund')
+  @ApiOperation({
+    summary: '退款（把已支付账单的金额退回余额）',
+  })
+  async refund(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+    const userId = this.userId(request);
+    const bill = await this.billsService.refundBill(userId, id);
+    await this.logging.audit({
+      level: 'warn',
+      category: 'event',
+      message: `账单退款：${id} ¥${bill.amount}`,
+      userId,
+      ipAddress: request.ip,
+      userAgent: request.headers['user-agent'],
+    });
+    return bill;
+  }
+
   private userId(request: AuthenticatedRequest): string {
     const userId = request.user?.sub;
     if (!userId) throw new UnauthorizedException('未登录');

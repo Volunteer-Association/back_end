@@ -15,6 +15,7 @@ import { PaymentsController } from './payments.controller.js';
 import { AdminPaymentsController } from './admin-payments.controller.js';
 import { AdminWalletController } from './admin-wallet.controller.js';
 import { PaymentsService } from './payments.service.js';
+import { CommonModule } from '../common/common.module.js';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PaymentsService } from './payments.service.js';
     AuthModule,
     UsersModule,
     LoggingModule,
+    CommonModule,
     TypeOrmModule.forFeature([
       UserBalanceEntity,
       RechargeOrderEntity,

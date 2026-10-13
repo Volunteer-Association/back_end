@@ -136,7 +136,16 @@ export class BillsService {
     return { success: true };
   }
 
-  /** 用账户余额支付支出账单。余额不足由 PaymentsService 抛错。 */
+  /**
+   * 用账户余额支付支出账单。
+   *
+   * 流程：
+   * 1. 校验账单属于当前用户、是支出类型、还没支付过
+   * 2. 调用 PaymentsService.consume() 扣钱（余额不足会抛错）
+   * 3. 更新账单 paidAt 为当前时间
+   *
+   * 注意：consume 内部已经在事务里写了流水，这里不需要再写。
+   */
   async payWithBalance(userId: string, billId: string): Promise<BillEntity> {
     const bill = await this.bills.findOne({ where: { id: billId, userId } });
     if (!bill) throw new NotFoundException('账单不存在');
@@ -153,6 +162,32 @@ export class BillsService {
     });
 
     bill.paidAt = new Date();
+    return this.bills.save(bill);
+  }
+
+  /**
+   * 账单退款：把已支付账单的金额退回用户余额。
+   *
+   * 流程：
+   * 1. 校验账单已支付（paidAt 非空）
+   * 2. 调用 PaymentsService.refund() 加钱（写 refund 类型流水）
+   * 3. 清空 paidAt，账单变回「待支付」状态
+   */
+  async refundBill(userId: string, billId: string): Promise<BillEntity> {
+    const bill = await this.bills.findOne({ where: { id: billId, userId } });
+    if (!bill) throw new NotFoundException('账单不存在');
+    if (!bill.paidAt) throw new BadRequestException('该账单未支付，无需退款');
+
+    const amountCents = yuanToCents(bill.amount);
+    await this.payments.refund({
+      userId,
+      amountCents,
+      refType: 'bill',
+      refId: bill.id,
+      note: `退款：${bill.category}`,
+    });
+
+    bill.paidAt = null;
     return this.bills.save(bill);
   }
 

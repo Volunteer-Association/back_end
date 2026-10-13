@@ -12,11 +12,13 @@ import { DictItemEntity } from './dict-item.entity.js';
 import { UserBalanceEntity } from './user-balance.entity.js';
 import { RechargeOrderEntity } from './recharge-order.entity.js';
 import { BalanceTransactionEntity } from './balance-transaction.entity.js';
+import { IdempotencyKeyEntity } from './idempotency-key.entity.js';
 
 export { UserEntity };
 export { UserProfileEntity, RoleEntity, EmailVerificationEntity };
 export { BillEntity, DictItemEntity };
 export { UserBalanceEntity, RechargeOrderEntity, BalanceTransactionEntity };
+export { IdempotencyKeyEntity };
 export {
   OAuthIdentityEntity,
   OAuthLoginCodeEntity,
@@ -45,4 +47,5 @@ export const DATABASE_ENTITIES = [
   UserBalanceEntity,
   RechargeOrderEntity,
   BalanceTransactionEntity,
+  IdempotencyKeyEntity,
 ] as const;

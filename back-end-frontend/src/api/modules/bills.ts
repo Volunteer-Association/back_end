@@ -69,3 +69,8 @@ export function deleteBill(id: string) {
 export function payBill(id: string) {
   return request.post<Bill>(`/bills/${encodeURIComponent(id)}/pay`)
 }
+
+/** 退款：把已支付账单的金额退回余额。 */
+export function refundBill(id: string) {
+  return request.post<Bill>(`/bills/${encodeURIComponent(id)}/refund`)
+}

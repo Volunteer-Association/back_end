@@ -167,6 +167,16 @@
 </template>
 
 <script setup lang="ts">
+/**
+ * 我的钱包页面。
+ *
+ * 功能：
+ * - 显示账户余额（渐变卡片）
+ * - 充值记录列表（人工充值，管理员审核后到账）
+ * - 余额流水（所有收支明细，带流水号和关联单号）
+ * - 申请充值对话框（提交后等待管理员审核）
+ * - 转账对话框（输入对方邮箱，即时到账，带幂等键防重复扣款）
+ */
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
@@ -211,6 +221,7 @@ const transferVisible = ref(false)
 const transferring = ref(false)
 const transferFormRef = ref<FormInstance>()
 const transferForm = reactive({ toAccount: '', amountYuan: '', note: '' })
+const transferRequestId = ref('')
 const transferRules: FormRules = {
   toAccount: [
     { required: true, message: '请输入收款方邮箱' },
@@ -260,6 +271,9 @@ function openTransfer() {
   transferForm.toAccount = ''
   transferForm.amountYuan = ''
   transferForm.note = ''
+  // 每次打开对话框生成新的幂等键（类似微信/支付宝的商户订单号）
+  transferRequestId.value =
+    crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   transferVisible.value = true
 }
 
@@ -280,6 +294,7 @@ async function submitTransfer() {
     const r = await transfer({
       toAccount: transferForm.toAccount,
       amountCents,
+      requestId: transferRequestId.value,
       note: transferForm.note || null,
     })
     const targetName = r.toNickname || r.toAccount

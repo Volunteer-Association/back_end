@@ -37,6 +37,14 @@ export class TransferDto {
   @Min(100)
   amountCents: number;
 
+  @ApiProperty({
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    description: '幂等键（前端生成 UUID），重复请求不会重复扣款',
+  })
+  @IsString()
+  @MaxLength(64)
+  requestId: string;
+
   @ApiPropertyOptional({ example: 'AA 转账', maxLength: 200 })
   @IsOptional()
   @IsString()

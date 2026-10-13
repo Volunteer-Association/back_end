@@ -6,6 +6,23 @@ import {
   PrimaryColumn,
 } from 'typeorm';
 
+/**
+ * 余额流水表：记录每一次余额变动。
+ *
+ * 这是钱包系统的「账本」，所有收支都要写一条流水，
+ * 保证「用户余额 = 所有流水 amount 的代数和」。
+ *
+ * 流水类型：
+ * - recharge：充值入账（管理员审核通过充值申请）
+ * - consume：消费扣款（如支付账单）
+ * - refund：退款（账单退款等）
+ * - transfer_out：转账出款（转给其他用户）
+ * - transfer_in：转账收款（收到其他用户转账）
+ * - adjust：管理员手工调整
+ *
+ * amountCents 带符号：正数 = 加钱，负数 = 扣钱。
+ * balanceAfterCents 是变动后的余额快照，方便追溯。
+ */
 export type BalanceTxnType =
   | 'recharge'      // 充值入账
   | 'consume'       // 消费扣款（如支付账单）

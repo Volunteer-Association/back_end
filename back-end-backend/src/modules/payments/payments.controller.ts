@@ -15,6 +15,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { LoggingService } from '../logging/logging.service.js';
+import { IdempotencyService } from '../common/idempotency.service.js';
 import { PaymentsService } from './payments.service.js';
 import { CreateRechargeDto, TransferDto } from './dto/payments.dto.js';
 
@@ -26,6 +27,7 @@ export class PaymentsController {
   constructor(
     private readonly payments: PaymentsService,
     private readonly logging: LoggingService,
+    private readonly idempotency: IdempotencyService,
   ) {}
 
   @Get('balance')
@@ -72,27 +74,35 @@ export class PaymentsController {
   @Post('transfer')
   @ApiOperation({
     summary: '转账给其他用户',
-    description: '输入对方邮箱账号，实时扣减/入账，写双向流水。',
+    description: '输入对方邮箱账号，实时扣减/入账，写双向流水。带幂等键防重复扣款。',
   })
   async transfer(
     @Req() req: Request & { user?: { sub: string } },
     @Body() dto: TransferDto,
   ) {
     const userId = req.user!.sub;
-    const result = await this.payments.transfer(
+    const { result, reused } = await this.idempotency.execute({
+      key: dto.requestId,
       userId,
-      dto.toAccount.trim(),
-      dto.amountCents,
-      dto.note,
-    );
-    await this.logging.audit({
-      level: 'warn',
-      category: 'event',
-      message: `转账：¥${(dto.amountCents / 100).toFixed(2)} → ${result.toNickname || result.toUserId}`,
-      userId,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent'],
+      action: 'transfer',
+      handler: () =>
+        this.payments.transfer(
+          userId,
+          dto.toAccount.trim(),
+          dto.amountCents,
+          dto.note,
+        ),
     });
+    if (!reused) {
+      await this.logging.audit({
+        level: 'warn',
+        category: 'event',
+        message: `转账：¥${(dto.amountCents / 100).toFixed(2)} → ${result.toNickname || result.toUserId}`,
+        userId,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent'],
+      });
+    }
     return result;
   }
 }
