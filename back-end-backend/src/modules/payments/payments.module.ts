@@ -9,9 +9,11 @@ import {
   BalanceTransactionEntity,
   RechargeOrderEntity,
   UserBalanceEntity,
+  UserProfileEntity,
 } from '../../../mysql/entities/index.js';
 import { PaymentsController } from './payments.controller.js';
 import { AdminPaymentsController } from './admin-payments.controller.js';
+import { AdminWalletController } from './admin-wallet.controller.js';
 import { PaymentsService } from './payments.service.js';
 
 @Module({
@@ -24,9 +26,10 @@ import { PaymentsService } from './payments.service.js';
       UserBalanceEntity,
       RechargeOrderEntity,
       BalanceTransactionEntity,
+      UserProfileEntity,
     ]),
   ],
-  controllers: [PaymentsController, AdminPaymentsController],
+  controllers: [PaymentsController, AdminPaymentsController, AdminWalletController],
   providers: [PaymentsService, AuthGuard],
   exports: [PaymentsService],
 })

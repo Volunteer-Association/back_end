@@ -7,10 +7,12 @@ import {
 } from 'typeorm';
 
 export type BalanceTxnType =
-  | 'recharge'   // 充值入账
-  | 'consume'    // 消费扣款（如支付账单）
-  | 'refund'     // 退款
-  | 'adjust';    // 管理员手工调整
+  | 'recharge'      // 充值入账
+  | 'consume'       // 消费扣款（如支付账单）
+  | 'refund'        // 退款
+  | 'transfer_out'  // 转账出款
+  | 'transfer_in'   // 转账收款
+  | 'adjust';       // 管理员手工调整
 
 @Entity({ name: 'balance_transactions' })
 @Index('idx_txn_user_created', ['userId', 'createdAt'])
@@ -23,7 +25,7 @@ export class BalanceTransactionEntity {
 
   @Column({
     type: 'enum',
-    enum: ['recharge', 'consume', 'refund', 'adjust'],
+    enum: ['recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust'],
   })
   type: BalanceTxnType;
 

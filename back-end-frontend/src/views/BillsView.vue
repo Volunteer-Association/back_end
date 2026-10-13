@@ -480,8 +480,7 @@ async function payNow(bill: Bill) {
     if (idx >= 0) items.value[idx] = updated
   } catch (e: unknown) {
     const msg =
-      (e as { response?: { data?: { message?: string } } })?.response?.data
-        ?.message ?? '支付失败'
+      (e as { message?: string })?.message || '支付失败，请稍后重试'
     ElMessage.error(msg)
   }
 }

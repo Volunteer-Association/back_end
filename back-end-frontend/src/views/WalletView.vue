@@ -5,6 +5,7 @@
       description="账户余额、充值申请与消费流水。"
     >
       <template #actions>
+        <el-button type="primary" @click="openTransfer">转账</el-button>
         <el-button type="primary" @click="openRecharge">申请充值</el-button>
       </template>
     </PageHeader>
@@ -115,6 +116,38 @@
         <el-button type="primary" :loading="submitting" @click="submit">提交申请</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="transferVisible"
+      title="转账"
+      width="min(480px, calc(100vw - 32px))"
+      destroy-on-close
+    >
+      <el-alert
+        type="warning"
+        :closable="false"
+        title="转账即时到账"
+        description="输入对方注册邮箱，转账立即从你的余额扣除并打入对方余额。转账完成后不可撤回，请核对收款方。"
+        show-icon
+      />
+      <el-form ref="transferFormRef" :model="transferForm" :rules="transferRules" label-position="top" class="recharge-form">
+        <el-form-item label="收款方账号（邮箱）" prop="toAccount">
+          <el-input v-model.trim="transferForm.toAccount" placeholder="如 friend@example.com" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="转账金额（元）" prop="amountYuan">
+          <el-input v-model="transferForm.amountYuan" placeholder="最低 1 元">
+            <template #prepend>¥</template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="备注" prop="note">
+          <el-input v-model="transferForm.note" type="textarea" :rows="2" maxlength="200" placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="transferVisible = false">取消</el-button>
+        <el-button type="primary" :loading="transferring" @click="submitTransfer">确认转账</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -128,6 +161,7 @@ import {
   listMyRecharges,
   listMyTxns,
   requestRecharge,
+  transfer,
   type BalanceInfo,
   type RechargeChannel,
   type RechargeOrder,
@@ -158,6 +192,21 @@ const rules: FormRules = {
   channel: [{ required: true, message: '请选择渠道' }],
 }
 
+const transferVisible = ref(false)
+const transferring = ref(false)
+const transferFormRef = ref<FormInstance>()
+const transferForm = reactive({ toAccount: '', amountYuan: '', note: '' })
+const transferRules: FormRules = {
+  toAccount: [
+    { required: true, message: '请输入收款方邮箱' },
+    { type: 'email', message: '邮箱格式不正确' },
+  ],
+  amountYuan: [
+    { required: true, message: '请输入金额' },
+    { pattern: /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/, message: '金额格式不正确' },
+  ],
+}
+
 function channelLabel(c: RechargeChannel) {
   return { alipay: '支付宝', wechat: '微信', bank: '银行转账' }[c]
 }
@@ -175,9 +224,14 @@ function statusLabel(s: string) {
 }
 
 function txnTypeLabel(t: string) {
-  return { recharge: '充值', consume: '消费', refund: '退款', adjust: '调整' }[
-    t as 'recharge' | 'consume' | 'refund' | 'adjust'
-  ]
+  return {
+    recharge: '充值',
+    consume: '消费',
+    refund: '退款',
+    transfer_out: '转出',
+    transfer_in: '转入',
+    adjust: '调整',
+  }[t as never] ?? t
 }
 
 function openRecharge() {
@@ -185,6 +239,47 @@ function openRecharge() {
   form.userNote = ''
   form.channel = 'alipay'
   dialogVisible.value = true
+}
+
+function openTransfer() {
+  transferForm.toAccount = ''
+  transferForm.amountYuan = ''
+  transferForm.note = ''
+  transferVisible.value = true
+}
+
+async function submitTransfer() {
+  if (!transferFormRef.value) return
+  try {
+    await transferFormRef.value.validate()
+  } catch {
+    return
+  }
+  const amountCents = Math.round(Number(transferForm.amountYuan) * 100)
+  if (amountCents < 100) {
+    ElMessage.error('最低转账 1 元')
+    return
+  }
+  transferring.value = true
+  try {
+    const r = await transfer({
+      toAccount: transferForm.toAccount,
+      amountCents,
+      note: transferForm.note || null,
+    })
+    const targetName = r.toNickname || r.toAccount
+    ElMessage.success(`转账成功给 ${targetName}，剩余余额 ¥${(r.fromBalanceAfterCents / 100).toFixed(2)}`)
+    transferVisible.value = false
+    await reload()
+  } catch (e: unknown) {
+    // axios 拦截器已把 response.data 直接 reject，e 本身就是 { message } 或 Error
+    const msg =
+      (e as { message?: string })?.message ||
+      '转账失败，请稍后重试'
+    ElMessage.error(msg)
+  } finally {
+    transferring.value = false
+  }
 }
 
 async function submit() {
@@ -210,10 +305,9 @@ async function submit() {
     dialogVisible.value = false
     await reload()
   } catch (e: unknown) {
-    ElMessage.error(
-      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        '提交失败',
-    )
+    const msg =
+      (e as { message?: string })?.message || '提交失败，请稍后重试'
+    ElMessage.error(msg)
   } finally {
     submitting.value = false
   }

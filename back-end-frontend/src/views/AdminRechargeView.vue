@@ -109,8 +109,7 @@ async function approve(order: RechargeOrder) {
     await reload()
   } catch (e: unknown) {
     ElMessage.error(
-      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        '操作失败',
+      (e as { message?: string })?.message || '操作失败，请稍后重试',
     )
   }
 }
@@ -131,8 +130,7 @@ async function reject(order: RechargeOrder) {
     await reload()
   } catch (e: unknown) {
     ElMessage.error(
-      (e as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        '操作失败',
+      (e as { message?: string })?.message || '操作失败，请稍后重试',
     )
   }
 }

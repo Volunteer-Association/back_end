@@ -85,8 +85,7 @@ async function confirm() {
         emit('update:modelValue', false)
       } catch (e: unknown) {
         ElMessage.error(
-          (e as { response?: { data?: { message?: string } } })?.response?.data
-            ?.message ?? '上传失败',
+          (e as { message?: string })?.message || '上传失败，请稍后重试',
         )
       } finally {
         uploading.value = false

@@ -162,8 +162,7 @@ async function save() {
     await reload()
   } catch (e: unknown) {
     ElMessage.error(
-      (e as { response?: { data?: { message?: string } } })?.response?.data
-        ?.message ?? '保存失败',
+      (e as { message?: string })?.message || '保存失败，请稍后重试',
     )
   } finally {
     saving.value = false

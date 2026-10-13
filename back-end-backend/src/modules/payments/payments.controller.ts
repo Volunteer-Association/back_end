@@ -16,7 +16,7 @@ import {
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { LoggingService } from '../logging/logging.service.js';
 import { PaymentsService } from './payments.service.js';
-import { CreateRechargeDto } from './dto/payments.dto.js';
+import { CreateRechargeDto, TransferDto } from './dto/payments.dto.js';
 
 @ApiTags('支付-用户端')
 @ApiBearerAuth()
@@ -67,5 +67,32 @@ export class PaymentsController {
   @ApiOperation({ summary: '我的余额流水' })
   myTxns(@Req() req: Request & { user?: { sub: string } }) {
     return this.payments.listMyTransactions(req.user!.sub);
+  }
+
+  @Post('transfer')
+  @ApiOperation({
+    summary: '转账给其他用户',
+    description: '输入对方邮箱账号，实时扣减/入账，写双向流水。',
+  })
+  async transfer(
+    @Req() req: Request & { user?: { sub: string } },
+    @Body() dto: TransferDto,
+  ) {
+    const userId = req.user!.sub;
+    const result = await this.payments.transfer(
+      userId,
+      dto.toAccount.trim(),
+      dto.amountCents,
+      dto.note,
+    );
+    await this.logging.audit({
+      level: 'warn',
+      category: 'event',
+      message: `转账：¥${(dto.amountCents / 100).toFixed(2)} → ${result.toNickname || result.toUserId}`,
+      userId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    return result;
   }
 }

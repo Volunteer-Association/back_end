@@ -12,6 +12,7 @@ import {
   BalanceTransactionEntity,
   RechargeOrderEntity,
   UserBalanceEntity,
+  UserProfileEntity,
   type RechargeChannel,
 } from '../../../mysql/entities/index.js';
 import {
@@ -50,6 +51,8 @@ export class PaymentsService {
     private readonly recharges: Repository<RechargeOrderEntity>,
     @InjectRepository(BalanceTransactionEntity)
     private readonly txns: Repository<BalanceTransactionEntity>,
+    @InjectRepository(UserProfileEntity)
+    private readonly profiles: Repository<UserProfileEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @Inject(SNOWFLAKE_ID_GENERATOR)
@@ -247,5 +250,232 @@ export class PaymentsService {
       });
       return manager.save(txn);
     });
+  }
+
+  // ===== 用户间转账 =====
+
+  /**
+   * 转账：fromUser → toUser（按对方邮箱账号查 userId）。
+   * 事务里：A 扣钱、B 加钱、各写一条流水（refType=transfer，refId=转账单号）。
+   * 流水 note 使用对方昵称而非 userId，类似微信/支付宝。
+   */
+  async transfer(
+    fromUserId: string,
+    toAccount: string,
+    amountCents: number,
+    note?: string | null,
+  ) {
+    if (!Number.isInteger(amountCents) || amountCents <= 0) {
+      throw new BadRequestException('转账金额必须为正整数（分）');
+    }
+    if (amountCents > 10_000_00) {
+      throw new BadRequestException('单笔转账不能超过 10 万元');
+    }
+    // 按邮箱查收款方
+    const target = await this.profiles.findOne({
+      where: { email: toAccount.toLowerCase() },
+    });
+    if (!target) throw new BadRequestException('收款账号不存在');
+    const toUserId = target.userId;
+    if (fromUserId === toUserId) {
+      throw new BadRequestException('不能给自己转账');
+    }
+    const fromProfile = await this.profiles.findOne({ where: { userId: fromUserId } });
+
+    // 展示名：优先昵称，否则邮箱前缀
+    const toDisplayName = target.nickname || target.email.split('@')[0];
+    const fromDisplayName = fromProfile?.nickname || fromProfile?.email.split('@')[0] || fromUserId;
+
+    const transferId = await this.idGenerator.nextId();
+    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      // 锁 A 余额
+      const fromBal = await manager.findOne(UserBalanceEntity, {
+        where: { userId: fromUserId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const fromCurrent = fromBal ? Number(fromBal.balanceCents) : 0;
+      if (fromCurrent < amountCents) {
+        throw new BadRequestException(
+          `余额不足，当前 ¥${centsToYuan(fromCurrent)}，需 ¥${centsToYuan(amountCents)}`,
+        );
+      }
+      const fromAfter = fromCurrent - amountCents;
+      if (fromBal) {
+        fromBal.balanceCents = String(fromAfter);
+        fromBal.version += 1;
+        await manager.save(fromBal);
+      }
+
+      // 锁 B 余额
+      let toBal = await manager.findOne(UserBalanceEntity, {
+        where: { userId: toUserId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!toBal) {
+        toBal = manager.create(UserBalanceEntity, {
+          userId: toUserId,
+          balanceCents: '0',
+          version: 0,
+        });
+      }
+      const toBefore = Number(toBal.balanceCents);
+      const toAfter = toBefore + amountCents;
+      toBal.balanceCents = String(toAfter);
+      toBal.version += 1;
+      await manager.save(toBal);
+
+      const userNote = note?.trim();
+
+      // A 出款流水：显示对方昵称
+      await manager.save(
+        manager.create(BalanceTransactionEntity, {
+          id: await this.idGenerator.nextId(),
+          userId: fromUserId,
+          type: 'transfer_out',
+          amountCents: String(-amountCents),
+          balanceAfterCents: String(fromAfter),
+          refType: 'transfer',
+          refId: String(transferId),
+          note: `转账给 ${toDisplayName}${userNote ? '：' + userNote : ''}`,
+        }),
+      );
+      // B 入款流水：显示对方昵称
+      await manager.save(
+        manager.create(BalanceTransactionEntity, {
+          id: await this.idGenerator.nextId(),
+          userId: toUserId,
+          type: 'transfer_in',
+          amountCents: String(amountCents),
+          balanceAfterCents: String(toAfter),
+          refType: 'transfer',
+          refId: String(transferId),
+          note: `来自 ${fromDisplayName} 的转账${userNote ? '：' + userNote : ''}`,
+        }),
+      );
+
+      return {
+        transferId: String(transferId),
+        amountCents,
+        fromUserId,
+        toUserId,
+        toAccount: target.email,
+        toNickname: target.nickname,
+        fromBalanceAfterCents: fromAfter,
+        toBalanceAfterCents: toAfter,
+      };
+    });
+  }
+
+  // ===== 管理员：全局流水 / 对账 =====
+
+  /** 管理员查所有流水（分页 + 过滤）。 */
+  async adminListTransactions(options: {
+    page?: number;
+    pageSize?: number;
+    userId?: string;
+    type?: string;
+  }) {
+    const page = Math.max(1, options.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, options.pageSize ?? 20));
+    const where: Record<string, unknown> = {};
+    if (options.userId) where.userId = options.userId;
+    if (options.type) where.type = options.type;
+    const [items, total] = await this.txns.findAndCount({
+      where,
+      order: { createdAt: 'DESC' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    });
+    return { items, total, page, pageSize };
+  }
+
+  /** 管理员查所有用户余额。 */
+  async adminListBalances() {
+    const rows = await this.balances.find({ order: { balanceCents: 'DESC' } });
+    // 联表取昵称/邮箱
+    const profiles = await this.profiles.find();
+    const map = new Map(profiles.map((p) => [p.userId, p]));
+    return rows.map((r) => {
+      const p = map.get(r.userId);
+      return {
+        userId: r.userId,
+        email: p?.email ?? null,
+        nickname: p?.nickname ?? null,
+        balanceCents: Number(r.balanceCents),
+        balanceYuan: centsToYuan(Number(r.balanceCents)),
+        version: r.version,
+      };
+    });
+  }
+
+  /**
+   * 对账：按日期范围汇总。
+   * 口径：
+   *  - totalBalance = 所有用户余额加总
+   *  - rechargeSum / consumeSum / transferOutSum / transferInSum / refundSum / adjustSum = 各类型流水金额合计（带符号）
+   *  - 平衡校验：totalBalance ≈ 所有流水 amountCents 加总（recharge + consume(-) + refund + transferOut(-) + transferIn + adjust）
+   */
+  async adminReconcile(startDate?: string, endDate?: string) {
+    const qb = this.txns.createQueryBuilder('t');
+    if (startDate) qb.andWhere('t.created_at >= :start', { start: startDate });
+    if (endDate) qb.andWhere('t.created_at <= :end', { end: endDate + ' 23:59:59' });
+    const rows = await qb
+      .select('t.type', 'type')
+      .addSelect('SUM(t.amount_cents)', 'sum')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('t.type')
+      .getRawMany<{ type: string; sum: string; count: string }>();
+
+    const byType: Record<string, { sumCents: number; count: number }> = {};
+    for (const r of rows) {
+      byType[r.type] = { sumCents: Number(r.sum), count: Number(r.count) };
+    }
+
+    // 所有用户余额加总（不受日期限制，是"当前时点"口径）
+    const balRows = await this.balances.find();
+    const totalBalance = balRows.reduce((acc, r) => acc + Number(r.balanceCents), 0);
+
+    // 全量流水加总（不受日期限制）
+    const sumByType = async (type: string) =>
+      this.txns
+        .createQueryBuilder('t')
+        .select('COALESCE(SUM(t.amount_cents), 0)', 'sum')
+        .where('t.type = :type', { type })
+        .getRawOne<{ sum: string }>()
+        .then((r) => Number(r?.sum ?? 0));
+
+    const [rechargeSum, consumeSum, transferOutSum, transferInSum, refundSum, adjustSum] =
+      await Promise.all([
+        sumByType('recharge'),
+        sumByType('consume'),
+        sumByType('transfer_out'),
+        sumByType('transfer_in'),
+        sumByType('refund'),
+        sumByType('adjust'),
+      ]);
+    const ledgerSum =
+      rechargeSum + consumeSum + transferOutSum + transferInSum + refundSum + adjustSum;
+
+    const diff = totalBalance - ledgerSum;
+    return {
+      range: { startDate: startDate ?? null, endDate: endDate ?? null },
+      totalBalanceCents: totalBalance,
+      totalBalanceYuan: centsToYuan(totalBalance),
+      ledgerSumCents: ledgerSum,
+      ledgerSumYuan: centsToYuan(ledgerSum),
+      diffCents: diff,
+      diffYuan: centsToYuan(diff),
+      balanced: diff === 0,
+      periodSummary: byType,
+      allTime: {
+        rechargeSumCents: rechargeSum,
+        consumeSumCents: consumeSum,
+        transferOutSumCents: transferOutSum,
+        transferInSumCents: transferInSum,
+        refundSumCents: refundSum,
+        adjustSumCents: adjustSum,
+      },
+      userCount: balRows.length,
+    };
   }
 }

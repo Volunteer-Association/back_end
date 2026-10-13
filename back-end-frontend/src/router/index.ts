@@ -75,6 +75,12 @@ const router = createRouter({
           meta: { admin: true, title: '充值审核' },
         },
         {
+          path: 'admin/reconcile',
+          name: 'admin-reconcile',
+          component: () => import('@/views/AdminReconcileView.vue'),
+          meta: { admin: true, title: '钱包对账' },
+        },
+        {
           path: 'upload',
           name: 'upload',
           component: () => import('@/views/FileUploadView.vue'),

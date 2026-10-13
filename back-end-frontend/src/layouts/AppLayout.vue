@@ -63,6 +63,7 @@
             <el-menu-item index="/admin/logs">系统日志</el-menu-item>
             <el-menu-item index="/admin/dict">数据字典</el-menu-item>
             <el-menu-item index="/admin/recharges">充值审核</el-menu-item>
+            <el-menu-item index="/admin/reconcile">钱包对账</el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="others">
