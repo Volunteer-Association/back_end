@@ -40,6 +40,13 @@ export class DictController {
     return this.dict.listEnabled(dictType);
   }
 
+  @Get('dict/types')
+  @ApiOperation({ summary: '字典类型注册表（类型下拉选项）' })
+  @ApiResponse({ status: 200, description: '可用字典类型列表。' })
+  listTypes() {
+    return this.dict.listTypes();
+  }
+
   @Get('admin/dict/items')
   @ApiOperation({ summary: '管理员查询全部字典项' })
   @ApiQuery({ name: 'dictType', required: false })

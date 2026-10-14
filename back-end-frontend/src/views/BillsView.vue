@@ -267,20 +267,28 @@ import {
   type BillInput,
   type BillType,
 } from '@/api/modules/bills'
-import { getEnabledDictItems } from '@/api/modules/dict'
+import { getDictTypes, getEnabledDictItems } from '@/api/modules/dict'
 
-/** 分类从数据字典动态加载：分别查 income 和 expense 两个字典类型 */
+/** 分类从数据字典动态加载：类型清单由后端注册表驱动，
+ *  dictType（bill_category_income）按后缀映射到账单类型（income）。 */
 const categories = ref<Record<BillType, string[]>>({ income: [], expense: [] })
 
 async function loadCategories() {
   try {
-    const [incomeItems, expenseItems] = await Promise.all([
-      getEnabledDictItems('bill_category_income'),
-      getEnabledDictItems('bill_category_expense'),
-    ])
+    const types = await getDictTypes()
+    const entries = await Promise.all(
+      types.map(async (t) => {
+        const items = await getEnabledDictItems(t.value)
+        return [
+          t.value.replace(/^bill_category_/, ''),
+          items.map((i) => i.itemValue),
+        ] as const
+      }),
+    )
+    const map = Object.fromEntries(entries) as Partial<Record<BillType, string[]>>
     categories.value = {
-      income: incomeItems.map((i) => i.itemValue),
-      expense: expenseItems.map((i) => i.itemValue),
+      income: map.income ?? [],
+      expense: map.expense ?? [],
     }
   } catch {
     ElMessage.error('加载分类字典失败')

@@ -20,6 +20,36 @@ export interface DictItemInput {
   enabled?: boolean;
 }
 
+/**
+ * 字典类型注册表：全项目字典类型的唯一登记入口。
+ *
+ * 为什么要有注册表：dictType 是技术字符串（如 bill_category_expense），
+ * 之前让管理员在表单里自由输入，结果填错类型、脏数据混进账单下拉。
+ * 现在前端所有类型下拉都从这里取；新增业务字典时加一行，
+ * 不再需要在前后端各自写魔法字符串。
+ */
+export interface DictTypeOption {
+  /** 对应 dict_items.dict_type，技术字符串 */
+  value: string;
+  /** 界面展示名 */
+  label: string;
+  /** 该类型下 dictKey 的填写说明（给管理员表单用） */
+  keyHint: string;
+}
+
+export const DICT_TYPE_OPTIONS: DictTypeOption[] = [
+  {
+    value: 'bill_category_income',
+    label: '账单·收入分类',
+    keyHint: '英文标识，如 salary；同一类型内保持唯一',
+  },
+  {
+    value: 'bill_category_expense',
+    label: '账单·支出分类',
+    keyHint: '英文标识，如 food；同一类型内保持唯一',
+  },
+];
+
 @Injectable()
 export class DictService {
   constructor(
@@ -43,6 +73,11 @@ export class DictService {
       where: dictType ? { dictType } : {},
       order: { dictType: 'ASC', dictKey: 'ASC', sortOrder: 'ASC' },
     });
+  }
+
+  /** 返回字典类型注册表，供前端类型下拉使用。 */
+  listTypes(): DictTypeOption[] {
+    return DICT_TYPE_OPTIONS;
   }
 
   async create(input: DictItemInput): Promise<DictItemEntity> {

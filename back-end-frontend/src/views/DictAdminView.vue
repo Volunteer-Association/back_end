@@ -11,17 +11,27 @@
 
     <el-card shadow="never">
       <div class="filters">
-        <el-input
+        <el-select
           v-model="filterType"
-          placeholder="按字典类型过滤，如 bill_category"
+          placeholder="按字典类型过滤"
           clearable
+          style="width: 220px"
           @change="reload"
-        />
+        >
+          <el-option
+            v-for="t in types"
+            :key="t.value"
+            :label="t.label"
+            :value="t.value"
+          />
+        </el-select>
         <el-button :loading="loading" @click="reload">刷新</el-button>
       </div>
 
       <el-table v-loading="loading" :data="items" stripe>
-        <el-table-column prop="dictType" label="字典类型" width="180" />
+        <el-table-column label="字典类型" width="180">
+          <template #default="{ row }">{{ typeLabel(row.dictType) }}</template>
+        </el-table-column>
         <el-table-column prop="dictKey" label="分组键" width="140" />
         <el-table-column prop="itemValue" label="显示值" min-width="160" />
         <el-table-column prop="sortOrder" label="排序" width="80" align="center" />
@@ -49,10 +59,17 @@
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
         <el-form-item label="字典类型" prop="dictType">
-          <el-input v-model="form.dictType" placeholder="如 bill_category" />
+          <el-select v-model="form.dictType" placeholder="选择字典类型" style="width: 100%">
+            <el-option
+              v-for="t in types"
+              :key="t.value"
+              :label="t.label"
+              :value="t.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="分组键" prop="dictKey">
-          <el-input v-model="form.dictKey" placeholder="如 income / expense" />
+          <el-input v-model="form.dictKey" :placeholder="selectedTypeHint" />
         </el-form-item>
         <el-form-item label="显示值" prop="itemValue">
           <el-input v-model="form.itemValue" placeholder="如 餐饮" />
@@ -73,7 +90,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -81,30 +98,51 @@ import {
   createDictItem,
   deleteDictItem,
   getAllDictItems,
+  getDictTypes,
   updateDictItem,
   type DictItem,
+  type DictTypeOption,
 } from '@/api/modules/dict'
 
 const loading = ref(false)
 const saving = ref(false)
 const items = ref<DictItem[]>([])
+const types = ref<DictTypeOption[]>([])
 const filterType = ref('')
 const dialogVisible = ref(false)
 const editing = ref<DictItem | null>(null)
 const formRef = ref<FormInstance>()
 
 const form = reactive({
-  dictType: 'bill_category',
-  dictKey: 'expense',
+  dictType: 'bill_category_expense',
+  dictKey: '',
   itemValue: '',
   sortOrder: 0,
   enabled: true,
 })
 
+/** 把 dictType 技术串映射成界面友好名；注册表没有的原样显示，避免静默丢失。 */
+function typeLabel(value: string): string {
+  return types.value.find((t) => t.value === value)?.label ?? value
+}
+
+/** 当前选中类型对分组键的填写说明。 */
+const selectedTypeHint = computed(
+  () => types.value.find((t) => t.value === form.dictType)?.keyHint ?? '英文标识，同类型内保持唯一',
+)
+
 const rules: FormRules = {
-  dictType: [{ required: true, message: '请输入字典类型' }],
+  dictType: [{ required: true, message: '请选择字典类型' }],
   dictKey: [{ required: true, message: '请输入分组键' }],
   itemValue: [{ required: true, message: '请输入显示值' }],
+}
+
+async function loadTypes() {
+  try {
+    types.value = await getDictTypes()
+  } catch {
+    /* 类型列表拉取失败不阻塞主列表 */
+  }
 }
 
 async function reload() {
@@ -121,8 +159,8 @@ async function reload() {
 function openCreate() {
   editing.value = null
   Object.assign(form, {
-    dictType: 'bill_category',
-    dictKey: 'expense',
+    dictType: 'bill_category_expense',
+    dictKey: '',
     itemValue: '',
     sortOrder: 0,
     enabled: true,
@@ -188,7 +226,10 @@ async function confirmDelete(row: DictItem) {
   }
 }
 
-onMounted(() => void reload())
+onMounted(() => {
+  void loadTypes()
+  void reload()
+})
 </script>
 
 <style scoped>
