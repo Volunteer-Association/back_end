@@ -198,7 +198,9 @@
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="160" />
+        <el-table-column label="时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
       </el-table>
 
       <el-pagination
@@ -263,6 +265,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
+import { formatDateTime } from '@/utils/utils'
 import {
   adminAdjust,
   adminReconcile,

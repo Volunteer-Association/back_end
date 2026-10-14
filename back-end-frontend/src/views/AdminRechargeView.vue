@@ -36,7 +36,9 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="申请时间" width="170" />
+        <el-table-column label="申请时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <template v-if="row.status === 'pending'">
@@ -61,6 +63,7 @@ import {
   adminRejectRecharge,
   type RechargeOrder,
 } from '@/api/modules/payments'
+import { formatDateTime } from '@/utils/utils'
 
 const loading = ref(false)
 const orders = ref<RechargeOrder[]>([])

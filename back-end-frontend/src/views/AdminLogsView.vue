@@ -65,7 +65,7 @@
         <el-table-column prop="userAgent" label="User-Agent" min-width="240" show-overflow-tooltip />
         <el-table-column prop="createdAt" label="时间" min-width="185">
           <template #default="{ row }">
-            {{ formatDate(row.createdAt) }}
+            {{ formatDateTime(row.createdAt) }}
           </template>
         </el-table-column>
       </el-table>
@@ -94,7 +94,7 @@
             </div>
             <div>
               <dt>时间</dt>
-              <dd>{{ formatDate(item.createdAt) }}</dd>
+              <dd>{{ formatDateTime(item.createdAt) }}</dd>
             </div>
           </dl>
         </article>
@@ -125,6 +125,7 @@ import {
   type AuditLog,
   type AuditLogCategory,
 } from '@/api/modules/auth'
+import { formatDateTime } from '@/utils/utils'
 
 const loading = ref(false)
 const items = ref<AuditLog[]>([])
@@ -145,10 +146,6 @@ function levelType(value: AuditLog['level']) {
 
 function categoryText(value: AuditLog['category']) {
   return { event: '事件日志', http: 'HTTP 请求日志' }[value]
-}
-
-function formatDate(value: string) {
-  return new Date(value).toLocaleString()
 }
 
 async function loadLogs(requestedPage = page.value) {

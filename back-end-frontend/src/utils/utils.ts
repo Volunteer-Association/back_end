@@ -46,3 +46,18 @@ class Utils {
 }
 
 export default Utils
+
+/**
+ * 把后端 ISO 时间（UTC）格式化为本地时间字符串：YYYY-MM-DD HH:mm:ss。
+ *
+ * 后端返回的是 '2026-10-14T02:00:58.000Z' 这种 UTC 串，
+ * 直接渲染会露出 T/Z 且时区不对；全项目时间列统一用本函数。
+ * 格式固定写死，不用 toLocaleString()，避免随浏览器区域设置变化。
+ */
+export function formatDateTime(value?: string | Date | null): string {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}

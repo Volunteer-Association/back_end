@@ -45,7 +45,9 @@
         <el-table-column prop="userNote" label="备注" min-width="160">
           <template #default="{ row }">{{ row.userNote || '—' }}</template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="申请时间" width="180" />
+        <el-table-column prop="createdAt" label="申请时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -85,7 +87,9 @@
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createdAt" label="时间" width="160" />
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
       </el-table>
     </el-card>
 
@@ -192,6 +196,7 @@ import {
   type RechargeOrder,
   type BalanceTxn,
 } from '@/api/modules/payments'
+import { formatDateTime } from '@/utils/utils'
 
 const balance = ref<BalanceInfo>({ balanceCents: 0, balanceYuan: '0.00' })
 const recharges = ref<RechargeOrder[]>([])
