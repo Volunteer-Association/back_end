@@ -9,12 +9,15 @@ import {
 } from 'class-validator';
 
 export class CreateDictItemDto {
-  @ApiProperty({ example: 'bill_category' })
+  @ApiProperty({ example: 'bill_category_expense' })
   @IsString()
   @MaxLength(64)
   dictType: string;
 
-  @ApiProperty({ example: 'expense', description: '分组键，如 income/expense' })
+  @ApiProperty({
+    example: 'food',
+    description: '字典项英文键，如 salary / food，同一字典类型下唯一',
+  })
   @IsString()
   @MaxLength(64)
   dictKey: string;

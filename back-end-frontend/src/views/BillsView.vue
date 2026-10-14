@@ -269,18 +269,19 @@ import {
 } from '@/api/modules/bills'
 import { getEnabledDictItems } from '@/api/modules/dict'
 
-/** 分类从数据字典 bill_category 动态加载；dictKey 对应 income / expense。 */
+/** 分类从数据字典动态加载：分别查 income 和 expense 两个字典类型 */
 const categories = ref<Record<BillType, string[]>>({ income: [], expense: [] })
 
 async function loadCategories() {
   try {
-    const items = await getEnabledDictItems('bill_category')
-    const grouped: Record<BillType, string[]> = { income: [], expense: [] }
-    for (const item of items) {
-      if (item.dictKey === 'income') grouped.income.push(item.itemValue)
-      else if (item.dictKey === 'expense') grouped.expense.push(item.itemValue)
+    const [incomeItems, expenseItems] = await Promise.all([
+      getEnabledDictItems('bill_category_income'),
+      getEnabledDictItems('bill_category_expense'),
+    ])
+    categories.value = {
+      income: incomeItems.map((i) => i.itemValue),
+      expense: expenseItems.map((i) => i.itemValue),
     }
-    categories.value = grouped
   } catch {
     ElMessage.error('加载分类字典失败')
   }

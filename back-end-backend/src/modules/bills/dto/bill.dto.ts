@@ -21,7 +21,8 @@ export class CreateBillDto {
 
   @ApiProperty({
     example: '餐饮',
-    description: '分类值，由数据字典 bill_category 动态提供。',
+    description:
+      '分类显示值，由数据字典 bill_category_income / bill_category_expense 动态提供。',
   })
   @IsString()
   @MaxLength(64)

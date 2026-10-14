@@ -33,7 +33,7 @@ export class DictController {
 
   @Get('dict/items')
   @ApiOperation({ summary: '按类型查询启用的字典项（业务侧使用）' })
-  @ApiQuery({ name: 'dictType', required: true, example: 'bill_category' })
+  @ApiQuery({ name: 'dictType', required: true, example: 'bill_category_expense' })
   @ApiResponse({ status: 200, description: '字典项列表。' })
   listEnabled(@Query('dictType') dictType?: string) {
     if (!dictType) throw new BadRequestException('dictType 不能为空');

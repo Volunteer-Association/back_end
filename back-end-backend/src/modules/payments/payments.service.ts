@@ -591,13 +591,16 @@ export class PaymentsService {
   async adminReconcileDaily(days: number = 30) {
     const rows = await this.txns
       .createQueryBuilder('t')
-      .select('DATE(t.created_at)', 'date')
+      // 用 DATE_FORMAT 强制返回 'YYYY-MM-DD' 字符串：
+      // mysql2 会把 DATE() 结果解析成 Date 对象，直接当字符串用会导致
+      // localeCompare 报错，且 Date 对象做 Map key 会让同一天的行聚合分裂。
+      .select("DATE_FORMAT(t.created_at, '%Y-%m-%d')", 'date')
       .addSelect('t.type', 'type')
       .addSelect('COUNT(*)', 'count')
       .addSelect('SUM(t.amount_cents)', 'sumCents')
       .where('t.created_at >= DATE_SUB(NOW(), INTERVAL :days DAY)', { days })
-      .groupBy('DATE(t.created_at), t.type')
-      .orderBy('DATE(t.created_at)', 'DESC')
+      .groupBy("DATE_FORMAT(t.created_at, '%Y-%m-%d'), t.type")
+      .orderBy("DATE_FORMAT(t.created_at, '%Y-%m-%d')", 'DESC')
       .getRawMany<{
         date: string;
         type: string;

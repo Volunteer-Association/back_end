@@ -293,7 +293,8 @@ export class OAuthController {
       return response.redirect(frontendCallback.toString());
     } catch (error: unknown) {
       this.logger.error(
-        `第三方授权回调失败（${provider}）[${error instanceof Error ? error.name : 'UnknownError'}]`,
+        `第三方授权回调失败（${provider}）[${error instanceof Error ? error.name : 'UnknownError'}] ${error instanceof Error ? error.message : ''}`,
+        error instanceof Error ? error.stack : undefined,
       );
       await this.helper.audit(request, 'warn', `oauth_callback_failed:${provider}`);
       frontendCallback.searchParams.set(

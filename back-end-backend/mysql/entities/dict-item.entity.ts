@@ -29,7 +29,7 @@ export class DictItemEntity {
     name: 'dict_key',
     type: 'varchar',
     length: 64,
-    comment: '字典分组键，如 income / expense；可空',
+    comment: '字典项英文键，如 salary / food；同一 dict_type 下唯一',
   })
   dictKey: string;
 

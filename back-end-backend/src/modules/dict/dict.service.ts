@@ -86,12 +86,22 @@ export class DictService {
     return { success: true };
   }
 
-  /** 账单服务专用：判断某类型下某分类是否在启用字典中。 */
-  async isCategoryAllowed(type: string, category: string): Promise<boolean> {
+  /**
+   * 账单服务专用：判断某类型下某分类是否在启用字典中。
+   *
+   * 字典约定：收入/支出各是一个字典类型
+   *   dict_type  = bill_category_income / bill_category_expense
+   *   dict_key   = 分类英文键（salary / food ...）
+   *   item_value = 中文显示名（工资 / 餐饮 ...），即账单表 bills.category 存的值。
+   * 因此校验时按 dict_type + item_value 匹配。
+   */
+  async isCategoryAllowed(
+    type: 'income' | 'expense',
+    category: string,
+  ): Promise<boolean> {
     const count = await this.repo.count({
       where: {
-        dictType: 'bill_category',
-        dictKey: type,
+        dictType: `bill_category_${type}`,
         itemValue: category,
         enabled: true,
       },
