@@ -20,9 +20,9 @@
         <strong>充值记录</strong>
       </template>
       <el-table :data="recharges" stripe>
-        <el-table-column label="充值单号" width="180">
+        <el-table-column label="充值单号" width="230">
           <template #default="{ row }">
-            <code class="mono">{{ row.id }}</code>
+            <code class="mono">{{ row.orderNo || row.id }}</code>
           </template>
         </el-table-column>
         <el-table-column label="金额" width="120">
@@ -42,7 +42,27 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="userNote" label="备注" min-width="160">
+        <el-table-column label="审核结果" min-width="200">
+          <template #default="{ row }">
+            <div v-if="row.status === 'pending'" class="muted">等待管理员核对到账</div>
+            <div v-else class="review-info">
+              <div
+                :class="row.status === 'rejected' ? 'review-reject' : 'review-approve'"
+              >
+                <template v-if="row.status === 'rejected'">
+                  驳回原因：{{ row.reviewNote || '管理员未填写原因' }}
+                </template>
+                <template v-else>
+                  {{ row.reviewNote || '已核对到账' }}
+                </template>
+              </div>
+              <div class="muted review-time">
+                {{ formatDateTime(row.reviewedAt) }}
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="userNote" label="转账备注" min-width="160">
           <template #default="{ row }">{{ row.userNote || '—' }}</template>
         </el-table-column>
         <el-table-column prop="createdAt" label="申请时间" width="170">
@@ -76,14 +96,15 @@
         <el-table-column prop="note" label="说明" min-width="180">
           <template #default="{ row }">{{ row.note || '—' }}</template>
         </el-table-column>
-        <el-table-column label="流水号" width="160">
+        <el-table-column label="流水号" width="260">
           <template #default="{ row }">
-            <code class="mono">{{ row.id }}</code>
+            <code class="mono">{{ row.txnNo || row.id }}</code>
           </template>
         </el-table-column>
-        <el-table-column label="关联单号" width="160">
+        <el-table-column label="关联单号" width="220">
           <template #default="{ row }">
-            <code v-if="row.refId" class="mono">{{ row.refId }}</code>
+            <code v-if="row.refType === 'admin_adjust'" class="muted">管理员调整</code>
+            <code v-else-if="row.refId" class="mono">{{ row.refId }}</code>
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
@@ -205,6 +226,8 @@ const txns = ref<BalanceTxn[]>([])
 const dialogVisible = ref(false)
 const submitting = ref(false)
 const formRef = ref<FormInstance>()
+// 每次打开充值弹窗生成新的幂等键，防止重复点击/网络重试产生重复充值单。
+const rechargeRequestId = ref('')
 const form = reactive({
   amountYuan: '',
   channel: 'alipay' as RechargeChannel,
@@ -269,6 +292,8 @@ function openRecharge() {
   form.amountYuan = ''
   form.userNote = ''
   form.channel = 'alipay'
+  rechargeRequestId.value =
+    crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
   dialogVisible.value = true
 }
 
@@ -335,6 +360,7 @@ async function submit() {
       amountCents,
       channel: form.channel,
       userNote: form.userNote || null,
+      requestId: rechargeRequestId.value,
     })
     ElMessage.success('已提交充值申请，请等待管理员审核')
     dialogVisible.value = false
@@ -405,6 +431,23 @@ onMounted(() => void reload())
 
 .muted {
   color: #c0c6d0;
+}
+
+.review-info {
+  display: grid;
+  gap: 2px;
+}
+
+.review-approve {
+  color: #22a06b;
+}
+
+.review-reject {
+  color: #e05b5b;
+}
+
+.review-time {
+  font-size: 12px;
 }
 
 .recharge-form {

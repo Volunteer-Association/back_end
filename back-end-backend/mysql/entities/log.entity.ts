@@ -17,8 +17,9 @@ export type LogCategory = 'event' | 'http';
 @Index('idx_logs_level', ['level'])
 @Index('idx_logs_category', ['category'])
 export class LogEntity {
-  @PrimaryGeneratedColumn({ comment: '表id' })
-  id: number;
+  // 日志写入量大，使用 BIGINT UNSIGNED 避免 INT 上限溢出。
+  @PrimaryGeneratedColumn({ type: 'bigint', unsigned: true, comment: '表id' })
+  id: string;
 
   @Column({
     type: 'enum',

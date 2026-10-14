@@ -39,6 +39,12 @@ const router = createRouter({
           meta: { title: '我的钱包' },
         },
         {
+          path: 'notifications',
+          name: 'notifications',
+          component: () => import('@/views/NotificationsView.vue'),
+          meta: { title: '消息通知' },
+        },
+        {
           path: 'about',
           name: 'about',
           component: () => import('@/views/AboutView.vue'),

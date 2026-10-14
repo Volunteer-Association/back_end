@@ -35,7 +35,8 @@ export interface LoginResponse {
 }
 
 export interface AuditLog {
-  id: number
+  // 后端 logs.id 为 BIGINT UNSIGNED，JSON 序列化后以字符串返回，避免 JS 精度丢失。
+  id: string
   level: 'info' | 'warn' | 'error'
   category: 'event' | 'http'
   message: string

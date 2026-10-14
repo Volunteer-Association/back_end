@@ -4,6 +4,8 @@ export type BillType = 'income' | 'expense'
 
 export interface Bill {
   id: string
+  /** 对外账单业务单号（BILL 前缀） */
+  billNo: string | null
   userId: string
   type: BillType
   category: string

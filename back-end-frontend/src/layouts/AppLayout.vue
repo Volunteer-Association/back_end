@@ -6,6 +6,7 @@
         <span v-if="!collapsed" class="brand-name">管理控制台</span>
       </div>
       <div class="account">
+        <NotificationBell />
         <el-avatar
           class="account-avatar"
           :size="32"
@@ -71,6 +72,7 @@
               <el-icon><More /></el-icon>
               <span>其他</span>
             </template>
+            <el-menu-item index="/notifications">消息通知</el-menu-item>
             <el-menu-item index="/three">3D 展示</el-menu-item>
             <el-menu-item index="/aidemo">AI 项目</el-menu-item>
             <el-menu-item index="/about">关于</el-menu-item>
@@ -123,6 +125,7 @@ import {
   Fold,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import NotificationBell from '@/components/NotificationBell.vue'
 
 const auth = useAuthStore()
 const router = useRouter()

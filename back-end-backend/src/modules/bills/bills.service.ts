@@ -15,6 +15,7 @@ import {
   SnowflakeIdGenerator,
 } from '../../../mysql/snowflake-id.js';
 import { DictService } from '../dict/dict.service.js';
+import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { PaymentsService, yuanToCents } from '../payments/payments.service.js';
 import type {
   BillFilters,
@@ -51,6 +52,7 @@ export class BillsService {
     private readonly idGenerator: SnowflakeIdGenerator,
     private readonly dict: DictService,
     private readonly payments: PaymentsService,
+    private readonly paymentNo: PaymentNoGenerator,
   ) {}
 
   async findPage(userId: string, query: BillQueryDto) {
@@ -99,6 +101,7 @@ export class BillsService {
     return this.bills.save(
       this.bills.create({
         id: await this.idGenerator.nextId(),
+        billNo: this.paymentNo.nextBillNo(),
         userId,
         type: input.type,
         category: input.category,
@@ -157,7 +160,7 @@ export class BillsService {
       userId,
       amountCents,
       refType: 'bill',
-      refId: bill.id,
+      refId: bill.billNo ?? bill.id,
       note: `支付账单：${bill.category}`,
     });
 
@@ -183,7 +186,7 @@ export class BillsService {
       userId,
       amountCents,
       refType: 'bill',
-      refId: bill.id,
+      refId: bill.billNo ?? bill.id,
       note: `退款：${bill.category}`,
     });
 

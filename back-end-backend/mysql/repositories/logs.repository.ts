@@ -22,7 +22,7 @@ export interface AuditLogItem {
   level: LogLevel;
   message: string;
   category: LogCategory;
-  id: number;
+  id: string;
   user: { id: string; username: string } | null;
   ipAddress: string | null;
   userAgent: string | null;

@@ -12,13 +12,23 @@ export type BillType = 'income' | 'expense';
 @Entity({ name: 'bills' })
 @Index('idx_bills_user_date', ['userId', 'transactionDate'])
 @Index('idx_bills_user_type_category', ['userId', 'type', 'category'])
+@Index('idx_bills_bill_no_unique', ['billNo'], { unique: true })
 export class BillEntity {
   @PrimaryColumn({
     type: 'varchar',
     length: 30,
-    comment: '雪花算法账单ID',
+    comment: '内部主键（雪花ID）',
   })
   id: string;
+
+  @Column({
+    name: 'bill_no',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+    comment: '对外账单业务单号（BILL 前缀，独立于内部主键）',
+  })
+  billNo: string | null;
 
   @Column({
     name: 'user_id',

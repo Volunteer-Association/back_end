@@ -17,11 +17,13 @@ describe('BillsService', () => {
   const dict = { isCategoryAllowed: jest.fn(async () => true) };
   // PaymentsService 在本 spec 里不会被调用（payWithBalance 路径未覆盖）。
   const payments = {};
+  const paymentNo = { nextBillNo: jest.fn(() => 'BILL2610140000000000000001') };
   const service = new BillsService(
     repository as unknown as Repository<BillEntity>,
     idGenerator as never,
     dict as never,
     payments as never,
+    paymentNo as never,
   );
 
   beforeEach(() => {

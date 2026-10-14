@@ -9,6 +9,7 @@ import {
   BalanceTransactionEntity,
   RechargeOrderEntity,
   UserBalanceEntity,
+  UserEntity,
   UserProfileEntity,
 } from '../../../mysql/entities/index.js';
 import { PaymentsController } from './payments.controller.js';
@@ -16,6 +17,7 @@ import { AdminPaymentsController } from './admin-payments.controller.js';
 import { AdminWalletController } from './admin-wallet.controller.js';
 import { PaymentsService } from './payments.service.js';
 import { CommonModule } from '../common/common.module.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -24,11 +26,13 @@ import { CommonModule } from '../common/common.module.js';
     UsersModule,
     LoggingModule,
     CommonModule,
+    NotificationsModule,
     TypeOrmModule.forFeature([
       UserBalanceEntity,
       RechargeOrderEntity,
       BalanceTransactionEntity,
       UserProfileEntity,
+      UserEntity,
     ]),
   ],
   controllers: [PaymentsController, AdminPaymentsController, AdminWalletController],

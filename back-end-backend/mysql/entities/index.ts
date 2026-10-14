@@ -13,12 +13,14 @@ import { UserBalanceEntity } from './user-balance.entity.js';
 import { RechargeOrderEntity } from './recharge-order.entity.js';
 import { BalanceTransactionEntity } from './balance-transaction.entity.js';
 import { IdempotencyKeyEntity } from './idempotency-key.entity.js';
+import { NotificationEntity } from './notification.entity.js';
 
 export { UserEntity };
 export { UserProfileEntity, RoleEntity, EmailVerificationEntity };
 export { BillEntity, DictItemEntity };
 export { UserBalanceEntity, RechargeOrderEntity, BalanceTransactionEntity };
 export { IdempotencyKeyEntity };
+export { NotificationEntity };
 export {
   OAuthIdentityEntity,
   OAuthLoginCodeEntity,
@@ -31,6 +33,7 @@ export type { OAuthProvider } from './oauth-identity.entity.js';
 export type { LogCategory, LogLevel } from './log.entity.js';
 export type { RechargeChannel, RechargeStatus } from './recharge-order.entity.js';
 export type { BalanceTxnType } from './balance-transaction.entity.js';
+export type { NotificationType } from './notification.entity.js';
 
 export const DATABASE_ENTITIES = [
   UserEntity,
@@ -48,4 +51,5 @@ export const DATABASE_ENTITIES = [
   RechargeOrderEntity,
   BalanceTransactionEntity,
   IdempotencyKeyEntity,
+  NotificationEntity,
 ] as const;

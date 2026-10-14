@@ -168,12 +168,12 @@
       </el-form>
 
       <el-table :data="txns" stripe v-loading="txnLoading">
-        <el-table-column prop="id" label="流水号" width="160">
+        <el-table-column label="流水号" width="260">
           <template #default="{ row }">
-            <code class="mono">{{ row.id }}</code>
+            <code class="mono">{{ row.txnNo || row.id }}</code>
           </template>
         </el-table-column>
-        <el-table-column prop="userId" label="用户" width="140" />
+        <el-table-column prop="userId" label="用户" width="160" />
         <el-table-column label="类型" width="90">
           <template #default="{ row }">
             <el-tag size="small">{{ typeLabel(row.type) }}</el-tag>
@@ -192,9 +192,10 @@
         <el-table-column prop="note" label="说明" min-width="200">
           <template #default="{ row }">{{ row.note || '—' }}</template>
         </el-table-column>
-        <el-table-column label="关联单号" width="160">
+        <el-table-column label="关联单号" width="220">
           <template #default="{ row }">
-            <code v-if="row.refId" class="mono">{{ row.refId }}</code>
+            <code v-if="row.refType === 'admin_adjust'" class="muted">管理员调整</code>
+            <code v-else-if="row.refId" class="mono">{{ row.refId }}</code>
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>

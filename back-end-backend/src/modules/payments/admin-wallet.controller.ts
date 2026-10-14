@@ -17,14 +17,21 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
+import { LoggingService } from '../logging/logging.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { PaymentsService } from './payments.service.js';
+import { AdminAdjustDto } from './dto/payments.dto.js';
 
 @ApiTags('钱包-管理员')
 @ApiBearerAuth()
 @UseGuards(AuthGuard)
 @Controller('admin/wallet')
 export class AdminWalletController {
-  constructor(private readonly payments: PaymentsService) {}
+  constructor(
+    private readonly payments: PaymentsService,
+    private readonly logging: LoggingService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   @Get('transactions')
   @ApiOperation({ summary: '全局流水（分页 + 过滤）' })
@@ -99,17 +106,44 @@ export class AdminWalletController {
       },
     },
   })
-  adjust(
+  async adjust(
     @Req() req: Request & { user?: Record<string, unknown> },
-    @Body() body: { targetUserId: string; amountCents: number; note?: string },
+    @Body() dto: AdminAdjustDto,
   ) {
     this.assertAdmin(req);
-    return this.payments.adminAdjust({
-      adminId: String(req.user!.sub),
-      targetUserId: body.targetUserId,
-      amountCents: Number(body.amountCents),
-      note: body.note,
+    const adminId = String(req.user!.sub);
+    const result = await this.payments.adminAdjust({
+      adminId,
+      targetUserId: dto.targetUserId,
+      amountCents: dto.amountCents,
+      note: dto.note,
     });
+    await this.logging.audit({
+      level: 'warn',
+      category: 'event',
+      message:
+        `余额调整：用户 ${dto.targetUserId}，金额 ${dto.amountCents > 0 ? '+' : ''}${dto.amountCents} 分` +
+        (dto.note ? `；原因：${dto.note}` : ''),
+      userId: adminId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+    // 通知被调整用户（金额以元展示，附调整后余额）；通知失败不影响已提交的调整
+    const isAdd = dto.amountCents > 0;
+    const amountText = `¥${(Math.abs(dto.amountCents) / 100).toFixed(2)}`;
+    const afterText = `¥${(Number(result.balanceAfterCents) / 100).toFixed(2)}`;
+    await this.notifications.createSafe({
+      userId: dto.targetUserId,
+      type: 'balance_adjusted',
+      title: isAdd ? '余额增加通知' : '余额扣减通知',
+      content:
+        `管理员已${isAdd ? '为您增加' : '从您账户扣减'}余额 ${amountText}，` +
+        `当前余额 ${afterText}。` +
+        (dto.note?.trim() ? ` 原因：${dto.note.trim()}` : ''),
+      bizType: 'admin_adjust',
+      bizId: result.id,
+    });
+    return result;
   }
 
   private assertAdmin(req: Request & { user?: Record<string, unknown> }) {

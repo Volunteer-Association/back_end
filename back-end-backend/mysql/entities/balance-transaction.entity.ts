@@ -33,9 +33,19 @@ export type BalanceTxnType =
 
 @Entity({ name: 'balance_transactions' })
 @Index('idx_txn_user_created', ['userId', 'createdAt'])
+@Index('idx_txn_no_unique', ['txnNo'], { unique: true })
 export class BalanceTransactionEntity {
   @PrimaryColumn({ type: 'varchar', length: 30 })
   id: string;
+
+  @Column({
+    name: 'txn_no',
+    type: 'varchar',
+    length: 32,
+    nullable: true,
+    comment: '对外支付流水号（28位业务编号，独立于内部主键）',
+  })
+  txnNo: string | null;
 
   @Column({ name: 'user_id', type: 'varchar', length: 30 })
   userId: string;

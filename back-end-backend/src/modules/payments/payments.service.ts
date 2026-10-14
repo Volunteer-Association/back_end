@@ -11,18 +11,79 @@ import {
   BalanceTransactionEntity,
   RechargeOrderEntity,
   UserBalanceEntity,
+  UserEntity,
   UserProfileEntity,
+  type BalanceTxnType,
   type RechargeChannel,
+  type RechargeStatus,
 } from '../../../mysql/entities/index.js';
 import {
   SNOWFLAKE_ID_GENERATOR,
   SnowflakeIdGenerator,
 } from '../../../mysql/snowflake-id.js';
+import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 
 export interface RechargeRequest {
   amountCents: number;
   channel: RechargeChannel;
   userNote?: string | null;
+}
+
+/**
+ * 充值单对外视图（管理员，完整）。
+ * - 金额 BIGINT 统一转成 number（单笔限额 10 万元，远小于 JS 安全整数上限），
+ *   与前端 TypeScript 类型保持一致；
+ * - reviewedByName 是审核人昵称（join users / pms_user 得到），便于页面展示；
+ * - adminNote 是仅管理员可见的内部备注，不能出现在用户端视图里。
+ */
+export interface RechargeOrderView {
+  id: string;
+  orderNo: string;
+  userId: string;
+  amountCents: number;
+  channel: RechargeChannel;
+  status: RechargeStatus;
+  userNote: string | null;
+  reviewedBy: string | null;
+  reviewedByName: string | null;
+  reviewNote: string | null;
+  adminNote: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * 充值单用户端视图（精简）。
+ * 出于安全考虑，不返回审核人ID/姓名、管理员内部备注，
+ * 用户只能看到自己的审核结果说明（reviewNote）和审核时间。
+ */
+export interface MyRechargeOrderView {
+  id: string;
+  orderNo: string;
+  userId: string;
+  amountCents: number;
+  channel: RechargeChannel;
+  status: RechargeStatus;
+  userNote: string | null;
+  reviewNote: string | null;
+  reviewedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** 余额流水对外视图，金额字段同样转 number。 */
+export interface BalanceTxnView {
+  id: string;
+  txnNo: string;
+  userId: string;
+  type: BalanceTxnType;
+  amountCents: number;
+  balanceAfterCents: number;
+  refType: string | null;
+  refId: string | null;
+  note: string | null;
+  createdAt: Date;
 }
 
 /** 把 "128.50" 这样的元字符串转成整数分。 */
@@ -99,13 +160,110 @@ export class PaymentsService {
     private readonly txns: Repository<BalanceTransactionEntity>,
     @InjectRepository(UserProfileEntity)
     private readonly profiles: Repository<UserProfileEntity>,
+    @InjectRepository(UserEntity)
+    private readonly accounts: Repository<UserEntity>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
     @Inject(SNOWFLAKE_ID_GENERATOR)
     private readonly idGenerator: SnowflakeIdGenerator,
+    private readonly paymentNo: PaymentNoGenerator,
   ) {}
 
   // ===== 用户端 =====
+
+  /**
+   * 批量把用户 userId 解析为展示名。
+   * 优先 users.nickname，其次 pms_user.login_name（登录账号），都没有则用兜底名。
+   * 用于把审核人（reviewedBy）等内部 userId 转成可读姓名。
+   */
+  private async resolveDisplayNames(
+    ids: string[],
+    fallback = '管理员',
+  ): Promise<Map<string, string>> {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    const nameMap = new Map<string, string>();
+    if (uniqueIds.length === 0) return nameMap;
+
+    const [profiles, accounts] = await Promise.all([
+      this.profiles.find({ where: uniqueIds.map((userId) => ({ userId })) }),
+      this.accounts.find({ where: uniqueIds.map((userId) => ({ userId })) }),
+    ]);
+    for (const id of uniqueIds) {
+      const profile = profiles.find((p) => p.userId === id);
+      const account = accounts.find((a) => a.userId === id);
+      nameMap.set(id, profile?.nickname || account?.username || fallback);
+    }
+    return nameMap;
+  }
+
+  /** 充值单实体 -> 管理员视图（完整，含审核人姓名与内部备注）。 */
+  private toRechargeView(
+    order: RechargeOrderEntity,
+    reviewerName?: string | null,
+  ): RechargeOrderView {
+    return {
+      id: order.id,
+      orderNo: order.orderNo ?? order.id,
+      userId: order.userId,
+      amountCents: Number(order.amountCents),
+      channel: order.channel,
+      status: order.status as RechargeStatus,
+      userNote: order.userNote ?? null,
+      reviewedBy: order.reviewedBy ?? null,
+      reviewedByName: order.reviewedBy ? (reviewerName ?? null) : null,
+      reviewNote: order.reviewNote ?? null,
+      adminNote: order.adminNote ?? null,
+      reviewedAt: order.reviewedAt ?? null,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+  }
+
+  /** 充值单实体 -> 用户视图（精简，不暴露审核人/内部备注）。 */
+  private toMyRechargeView(order: RechargeOrderEntity): MyRechargeOrderView {
+    return {
+      id: order.id,
+      orderNo: order.orderNo ?? order.id,
+      userId: order.userId,
+      amountCents: Number(order.amountCents),
+      channel: order.channel,
+      status: order.status as RechargeStatus,
+      userNote: order.userNote ?? null,
+      reviewNote: order.reviewNote ?? null,
+      reviewedAt: order.reviewedAt ?? null,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    };
+  }
+
+  /** 流水实体 -> 对外视图（金额转 number）。 */
+  private toTxnView(txn: BalanceTransactionEntity): BalanceTxnView {
+    return {
+      id: txn.id,
+      txnNo: txn.txnNo ?? txn.id,
+      userId: txn.userId,
+      type: txn.type as BalanceTxnType,
+      amountCents: Number(txn.amountCents),
+      balanceAfterCents: Number(txn.balanceAfterCents),
+      refType: txn.refType ?? null,
+      refId: txn.refId ?? null,
+      note: txn.note ?? null,
+      createdAt: txn.createdAt,
+    };
+  }
+
+  /** 给一批充值单补审核人姓名并转成管理员视图。 */
+  private async toRechargeViews(
+    orders: RechargeOrderEntity[],
+  ): Promise<RechargeOrderView[]> {
+    const reviewerIds = orders
+      .map((o) => o.reviewedBy)
+      .filter((v): v is string => Boolean(v));
+    const reviewerMap = await this.resolveDisplayNames(reviewerIds);
+    return orders.map((o) =>
+      this.toRechargeView(o, o.reviewedBy ? reviewerMap.get(o.reviewedBy) : null),
+    );
+  }
 
   /**
    * 查询用户余额。如果用户还没有余额记录，自动初始化一条 0 余额。
@@ -122,11 +280,12 @@ export class PaymentsService {
   }
 
   /** 申请线下充值。状态为 pending，等待管理员审核。 */
-  async requestRecharge(userId: string, req: RechargeRequest) {
+  async requestRecharge(userId: string, req: RechargeRequest): Promise<MyRechargeOrderView> {
     assertPositiveCents(req.amountCents, '充值');
     assertSingleLimit(req.amountCents, '充值');
     const order = this.recharges.create({
       id: await this.idGenerator.nextId(),
+      orderNo: this.paymentNo.nextRechargeOrderNo(),
       userId,
       amountCents: String(req.amountCents),
       channel: req.channel,
@@ -134,35 +293,54 @@ export class PaymentsService {
       userNote: req.userNote?.trim() || null,
       reviewedBy: null,
       reviewNote: null,
+      adminNote: null,
       reviewedAt: null,
     });
-    return this.recharges.save(order);
+    const saved = await this.recharges.save(order);
+    return this.toMyRechargeView(saved);
   }
 
-  listMyRecharges(userId: string) {
-    return this.recharges.find({
+  async listMyRecharges(userId: string): Promise<MyRechargeOrderView[]> {
+    const orders = await this.recharges.find({
       where: { userId },
       order: { createdAt: 'DESC' },
       take: 100,
     });
+    // 用户端视图不包含审核人、内部备注
+    return orders.map((o) => this.toMyRechargeView(o));
   }
 
-  listMyTransactions(userId: string) {
-    return this.txns.find({
+  async listMyTransactions(userId: string): Promise<BalanceTxnView[]> {
+    const txns = await this.txns.find({
       where: { userId },
       order: { createdAt: 'DESC' },
       take: 100,
     });
+    return txns.map((t) => this.toTxnView(t));
   }
 
   // ===== 管理员端 =====
 
-  adminListRecharges(status?: 'pending' | 'approved' | 'rejected') {
-    return this.recharges.find({
-      where: status ? { status } : {},
+  /** 管理员分页查询充值单（可按状态、用户ID筛选）。 */
+  async adminListRecharges(options: {
+    page?: number;
+    pageSize?: number;
+    status?: 'pending' | 'approved' | 'rejected';
+    userId?: string;
+  }) {
+    const page = Math.max(1, options.page ?? 1);
+    const pageSize = Math.min(100, Math.max(1, options.pageSize ?? 20));
+    const where: Record<string, unknown> = {};
+    if (options.status) where.status = options.status;
+    if (options.userId?.trim()) where.userId = options.userId.trim();
+    const [entities, total] = await this.recharges.findAndCount({
+      where,
       order: { createdAt: 'DESC' },
-      take: 200,
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     });
+    const items = await this.toRechargeViews(entities);
+    return { items, total, page, pageSize };
   }
 
   /**
@@ -181,8 +359,9 @@ export class PaymentsService {
     adminId: string,
     rechargeId: string,
     reviewNote?: string | null,
-  ) {
-    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+    adminNote?: string | null,
+  ): Promise<RechargeOrderView> {
+    const saved = await this.dataSource.transaction('READ COMMITTED', async (manager) => {
       const order = await manager.findOne(RechargeOrderEntity, {
         where: { id: rechargeId },
         lock: { mode: 'pessimistic_write' },
@@ -214,12 +393,13 @@ export class PaymentsService {
       await manager.save(
         manager.create(BalanceTransactionEntity, {
           id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('recharge'),
           userId: order.userId,
           type: 'recharge',
           amountCents: String(amount),
           balanceAfterCents: String(after),
           refType: 'recharge',
-          refId: order.id,
+          refId: order.orderNo ?? order.id,
           note: `充值到账（${order.channel}）`,
         }),
       );
@@ -227,16 +407,26 @@ export class PaymentsService {
       order.status = 'approved';
       order.reviewedBy = adminId;
       order.reviewNote = reviewNote?.trim() || null;
+      order.adminNote = adminNote?.trim() || null;
       order.reviewedAt = new Date();
       return manager.save(order);
     });
+
+    const reviewerNames = await this.resolveDisplayNames([adminId]);
+    return this.toRechargeView(saved, reviewerNames.get(adminId));
   }
 
   async rejectRecharge(
     adminId: string,
     rechargeId: string,
     reviewNote?: string | null,
-  ) {
+    adminNote?: string | null,
+  ): Promise<RechargeOrderView> {
+    // 纵深防御：即使绕过 DTO 校验直接调用，驳回也必须有原因。
+    const note = reviewNote?.trim();
+    if (!note) {
+      throw new BadRequestException('驳回时必须填写驳回原因');
+    }
     const order = await this.recharges.findOne({ where: { id: rechargeId } });
     if (!order) throw new NotFoundException('充值单不存在');
     if (order.status !== 'pending') {
@@ -244,9 +434,12 @@ export class PaymentsService {
     }
     order.status = 'rejected';
     order.reviewedBy = adminId;
-    order.reviewNote = reviewNote?.trim() || null;
+    order.reviewNote = note;
+    order.adminNote = adminNote?.trim() || null;
     order.reviewedAt = new Date();
-    return this.recharges.save(order);
+    const saved = await this.recharges.save(order);
+    const reviewerNames = await this.resolveDisplayNames([adminId]);
+    return this.toRechargeView(saved, reviewerNames.get(adminId));
   }
 
   // ===== 业务扣款（供 bills 等模块调用）=====
@@ -302,6 +495,7 @@ export class PaymentsService {
       }
       const txn = manager.create(BalanceTransactionEntity, {
         id: await this.idGenerator.nextId(),
+        txnNo: this.paymentNo.nextTxnNo('consume'),
         userId: params.userId,
         type: 'consume',
         amountCents: String(-params.amountCents),
@@ -353,7 +547,8 @@ export class PaymentsService {
     const toDisplayName = target.nickname || target.email.split('@')[0];
     const fromDisplayName = fromProfile?.nickname || fromProfile?.email.split('@')[0] || fromUserId;
 
-    const transferId = await this.idGenerator.nextId();
+    // 转账业务单号（两条流水共享，作为对外关联单号，独立于雪花ID）
+    const transferNo = this.paymentNo.nextTransferNo();
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       // 按 userId 字典序排序锁，防止 A→B 和 B→A 并发时死锁
       const [firstLockId, secondLockId] = [fromUserId, toUserId].sort();
@@ -406,12 +601,13 @@ export class PaymentsService {
       await manager.save(
         manager.create(BalanceTransactionEntity, {
           id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('transfer_out'),
           userId: fromUserId,
           type: 'transfer_out',
           amountCents: String(-amountCents),
           balanceAfterCents: String(fromAfter),
           refType: 'transfer',
-          refId: String(transferId),
+          refId: transferNo,
           note: `转账给 ${toDisplayName}${userNote ? '：' + userNote : ''}`,
         }),
       );
@@ -419,23 +615,26 @@ export class PaymentsService {
       await manager.save(
         manager.create(BalanceTransactionEntity, {
           id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('transfer_in'),
           userId: toUserId,
           type: 'transfer_in',
           amountCents: String(amountCents),
           balanceAfterCents: String(toAfter),
           refType: 'transfer',
-          refId: String(transferId),
+          refId: transferNo,
           note: `来自 ${fromDisplayName} 的转账${userNote ? '：' + userNote : ''}`,
         }),
       );
 
       return {
-        transferId: String(transferId),
+        transferId: transferNo,
+        transferNo,
         amountCents,
         fromUserId,
         toUserId,
         toAccount: target.email,
         toNickname: target.nickname,
+        fromNickname: fromProfile?.nickname ?? null,
         fromBalanceAfterCents: fromAfter,
         toBalanceAfterCents: toAfter,
       };
@@ -478,6 +677,7 @@ export class PaymentsService {
       return manager.save(
         manager.create(BalanceTransactionEntity, {
           id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('refund'),
           userId: params.userId,
           type: 'refund',
           amountCents: String(params.amountCents),
@@ -505,7 +705,7 @@ export class PaymentsService {
     targetUserId: string;
     amountCents: number;
     note?: string | null;
-  }): Promise<BalanceTransactionEntity> {
+  }): Promise<BalanceTxnView> {
     if (!Number.isInteger(params.amountCents) || params.amountCents === 0) {
       throw new BadRequestException('调整金额必须为非零整数（分）');
     }
@@ -513,7 +713,7 @@ export class PaymentsService {
     const target = await this.profiles.findOne({ where: { userId: params.targetUserId } });
     if (!target) throw new NotFoundException('目标用户不存在');
 
-    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+    const txn = await this.dataSource.transaction('READ COMMITTED', async (manager) => {
       let balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: params.targetUserId },
         lock: { mode: 'pessimistic_write' },
@@ -539,6 +739,7 @@ export class PaymentsService {
       return manager.save(
         manager.create(BalanceTransactionEntity, {
           id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('adjust'),
           userId: params.targetUserId,
           type: 'adjust',
           amountCents: String(params.amountCents),
@@ -551,6 +752,7 @@ export class PaymentsService {
         }),
       );
     });
+    return this.toTxnView(txn);
   }
 
   /**
@@ -667,7 +869,7 @@ export class PaymentsService {
       skip: (page - 1) * pageSize,
       take: pageSize,
     });
-    return { items, total, page, pageSize };
+    return { items: items.map((t) => this.toTxnView(t)), total, page, pageSize };
   }
 
   /** 管理员查所有用户余额。 */

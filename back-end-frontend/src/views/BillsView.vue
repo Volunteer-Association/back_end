@@ -83,6 +83,11 @@
           aria-label="账单记录"
           empty-text="暂无账单记录"
         >
+          <el-table-column label="账单号" width="240">
+            <template #default="{ row }">
+              <code class="mono">{{ row.billNo || row.id }}</code>
+            </template>
+          </el-table-column>
           <el-table-column label="类型" width="90">
             <template #default="{ row }">
               <el-tag :type="row.type === 'income' ? 'success' : 'danger'">
@@ -537,6 +542,15 @@ onMounted(async () => {
 .bills-page {
   display: grid;
   gap: 20px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: #475669;
+  background: #f4f7fb;
+  padding: 1px 6px;
+  border-radius: 4px;
 }
 
 .summary-grid {

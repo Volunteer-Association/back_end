@@ -15,21 +15,56 @@ export interface BalanceInfo {
   balanceYuan: string
 }
 
+/**
+ * 充值单（用户端，精简视图）。
+ * 出于安全考虑，后端不返回审核人ID/姓名、管理员内部备注，
+ * 用户只能看到自己的审核结果说明与审核时间。
+ */
 export interface RechargeOrder {
   id: string
+  /** 对外充值业务单号（CZ 前缀） */
+  orderNo: string
+  userId: string
+  amountCents: number
+  channel: RechargeChannel
+  status: RechargeStatus
+  userNote: string | null
+  /** 审核结果说明（驳回原因），用户可见 */
+  reviewNote: string | null
+  /** 审核时间 */
+  reviewedAt: string | null
+  createdAt: string
+}
+
+/**
+ * 充值单（管理员端，完整视图）。
+ * 包含审核人、审核结果、内部备注等管理信息，仅管理员接口返回。
+ */
+export interface AdminRechargeOrder {
+  id: string
+  /** 对外充值业务单号（CZ 前缀） */
+  orderNo: string
   userId: string
   amountCents: number
   channel: RechargeChannel
   status: RechargeStatus
   userNote: string | null
   reviewedBy: string | null
+  /** 审核人昵称（join 用户资料得到） */
+  reviewedByName: string | null
+  /** 审核结果说明（驳回原因），用户可见 */
   reviewNote: string | null
+  /** 管理员内部备注，仅管理员可见 */
+  adminNote: string | null
   reviewedAt: string | null
   createdAt: string
+  updatedAt: string
 }
 
 export interface BalanceTxn {
   id: string
+  /** 对外支付流水号（28 位业务编号） */
+  txnNo: string
   userId: string
   type: BalanceTxnType
   amountCents: number
@@ -48,6 +83,8 @@ export function requestRecharge(input: {
   amountCents: number
   channel: RechargeChannel
   userNote?: string | null
+  /** 幂等键（前端生成 UUID），防重复提交产生重复充值单 */
+  requestId: string
 }) {
   return request.post<RechargeOrder>('/payments/recharge', input)
 }
@@ -68,34 +105,59 @@ export function transfer(input: {
 }) {
   return request.post<{
     transferId: string
+    transferNo: string
     amountCents: number
     fromUserId: string
     toUserId: string
     toAccount: string
     toNickname: string | null
+    fromNickname: string | null
     fromBalanceAfterCents: number
     toBalanceAfterCents: number
   }>('/payments/transfer', input)
 }
 
 // ===== 管理员 =====
-export function adminListRecharges(status?: RechargeStatus) {
-  return request.get<RechargeOrder[]>('/admin/recharges', {
-    params: status ? { status } : {},
+export function adminListRecharges(params?: {
+  page?: number
+  pageSize?: number
+  status?: RechargeStatus
+  userId?: string
+}) {
+  return request.get<{
+    items: AdminRechargeOrder[]
+    total: number
+    page: number
+    pageSize: number
+  }>('/admin/recharges', {
+    params: {
+      page: params?.page,
+      pageSize: params?.pageSize,
+      status: params?.status,
+      userId: params?.userId || undefined,
+    },
   })
 }
 
-export function adminApproveRecharge(id: string, reviewNote?: string) {
-  return request.post<RechargeOrder>(
+export function adminApproveRecharge(
+  id: string,
+  reviewNote?: string,
+  adminNote?: string,
+) {
+  return request.post<AdminRechargeOrder>(
     `/admin/recharges/${encodeURIComponent(id)}/approve`,
-    { reviewNote },
+    { reviewNote: reviewNote || null, adminNote: adminNote || null },
   )
 }
 
-export function adminRejectRecharge(id: string, reviewNote?: string) {
-  return request.post<RechargeOrder>(
+export function adminRejectRecharge(
+  id: string,
+  reviewNote: string,
+  adminNote?: string,
+) {
+  return request.post<AdminRechargeOrder>(
     `/admin/recharges/${encodeURIComponent(id)}/reject`,
-    { reviewNote },
+    { reviewNote, adminNote: adminNote || null },
   )
 }
 

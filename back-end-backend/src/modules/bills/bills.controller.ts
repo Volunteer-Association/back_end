@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { LoggingService } from '../logging/logging.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import {
   BillQueryDto,
   CreateBillDto,
@@ -39,6 +40,7 @@ export class BillsController {
   constructor(
     private readonly billsService: BillsService,
     private readonly logging: LoggingService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Get()
@@ -141,6 +143,14 @@ export class BillsController {
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
     });
+    await this.notifications.createSafe({
+      userId,
+      type: 'bill_paid',
+      title: '账单支付成功',
+      content: `您的账单「${bill.category}」已通过余额支付 ¥${bill.amount}。`,
+      bizType: 'bill',
+      bizId: id,
+    });
     return bill;
   }
 
@@ -158,6 +168,14 @@ export class BillsController {
       userId,
       ipAddress: request.ip,
       userAgent: request.headers['user-agent'],
+    });
+    await this.notifications.createSafe({
+      userId,
+      type: 'bill_refunded',
+      title: '退款到账通知',
+      content: `您的账单「${bill.category}」退款 ¥${bill.amount} 已退回账户余额。`,
+      bizType: 'bill',
+      bizId: id,
     });
     return bill;
   }
