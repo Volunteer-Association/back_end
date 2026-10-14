@@ -112,21 +112,22 @@ export interface AdminBalanceRow {
 
 export interface ReconcileReport {
   range: { startDate: string | null; endDate: string | null }
-  totalBalanceCents: number
+  /** 汇总数可能超过 JS 安全整数，统一用字符串传输，前端不得再 Number() 累加 */
+  totalBalanceCents: string
   totalBalanceYuan: string
-  ledgerSumCents: number
+  ledgerSumCents: string
   ledgerSumYuan: string
-  diffCents: number
+  diffCents: string
   diffYuan: string
   balanced: boolean
-  periodSummary: Record<string, { sumCents: number; count: number }>
+  periodSummary: Record<string, { sumCents: string; count: number }>
   allTime: {
-    rechargeSumCents: number
-    consumeSumCents: number
-    transferOutSumCents: number
-    transferInSumCents: number
-    refundSumCents: number
-    adjustSumCents: number
+    rechargeSumCents: string
+    consumeSumCents: string
+    transferOutSumCents: string
+    transferInSumCents: string
+    refundSumCents: string
+    adjustSumCents: string
   }
   userCount: number
 }
@@ -171,9 +172,10 @@ export interface UserReconcileRow {
 
 export interface DailyReconcileRow {
   date: string
-  totalCents: number
+  /** 当日净变动（分），字符串，避免大汇总数精度丢失 */
+  totalCents: string
   count: number
-  byType: Record<string, number>
+  byType: Record<string, string>
 }
 
 export function adminReconcileByUser() {

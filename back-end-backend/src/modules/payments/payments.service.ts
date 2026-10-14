@@ -33,12 +33,48 @@ export function yuanToCents(amountYuan: string): number {
   return match[1] === '-' ? -cents : cents;
 }
 
-/** 把分转成 "128.50" 元字符串，便于 JSON 传输。 */
+/**
+ * 把分转成 "128.50" 元字符串，便于 JSON 传输。
+ *
+ * 注意：不能用 Number() 中转——JS 安全整数上限只有 2^53-1（约 9e15 分），
+ * 而数据库 BIGINT 能存到 9.2e18。因此这里全程做字符串切分，任意位数安全。
+ */
 export function centsToYuan(cents: number | string): string {
-  const n = typeof cents === 'string' ? Number(cents) : cents;
-  const sign = n < 0 ? '-' : '';
-  const abs = Math.abs(n);
-  return `${sign}${Math.floor(abs / 100)}.${(abs % 100).toString().padStart(2, '0')}`;
+  const raw = String(cents).trim();
+  const negative = raw.startsWith('-');
+  const digits = negative ? raw.slice(1) : raw;
+  if (!digits) return '0.00';
+  const normalized = digits.replace(/^0+(?=\d)/, '') || '0';
+  const intPart = normalized.length <= 2 ? '0' : normalized.slice(0, -2);
+  const fracPart = normalized.slice(-2).padStart(2, '0');
+  return `${negative ? '-' : ''}${intPart}.${fracPart}`;
+}
+
+/**
+ * ===== 钱包金额限额（单位：分）=====
+ * 全项目唯一调整入口：以后改充值/转账/调整额度，只改这里的常量，
+ * 不要在各方法里散落数字——分散写是上一次限额改错（10 万写成 1 万）的根因。
+ */
+/** 单笔交易下限：1 元 = 100 分。 */
+export const MIN_TXN_CENTS = 100;
+/** 单笔交易上限：10 万元 = 10,000,000 分。充值 / 转账 / 管理员调整共用。 */
+export const MAX_TXN_CENTS = 10_000_000;
+
+/**
+ * 校验金额是正整数分，不合法直接抛 400。
+ * @param action 用于报错文案，如「充值」「转账」「退款」「扣款」
+ */
+function assertPositiveCents(amountCents: number, action: string): void {
+  if (!Number.isInteger(amountCents) || amountCents <= 0) {
+    throw new BadRequestException(`${action}金额必须为正整数（分）`);
+  }
+}
+
+/** 校验单笔金额不超过 MAX_TXN_CENTS（10 万元）。 */
+function assertSingleLimit(amountCents: number, action: string): void {
+  if (amountCents > MAX_TXN_CENTS) {
+    throw new BadRequestException(`单笔${action}不能超过 10 万元`);
+  }
 }
 
 /**
@@ -87,12 +123,8 @@ export class PaymentsService {
 
   /** 申请线下充值。状态为 pending，等待管理员审核。 */
   async requestRecharge(userId: string, req: RechargeRequest) {
-    if (!Number.isInteger(req.amountCents) || req.amountCents <= 0) {
-      throw new BadRequestException('充值金额必须为正整数（分）');
-    }
-    if (req.amountCents > 10_000_00) {
-      throw new BadRequestException('单笔充值不能超过 10 万元');
-    }
+    assertPositiveCents(req.amountCents, '充值');
+    assertSingleLimit(req.amountCents, '充值');
     const order = this.recharges.create({
       id: await this.idGenerator.nextId(),
       userId,
@@ -240,9 +272,7 @@ export class PaymentsService {
     refId: string;
     note?: string | null;
   }): Promise<BalanceTransactionEntity> {
-    if (!Number.isInteger(params.amountCents) || params.amountCents <= 0) {
-      throw new BadRequestException('扣款金额必须为正整数（分）');
-    }
+    assertPositiveCents(params.amountCents, '扣款');
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       const balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: params.userId },
@@ -306,13 +336,9 @@ export class PaymentsService {
     amountCents: number,
     note?: string | null,
   ) {
-    if (!Number.isInteger(amountCents) || amountCents <= 0) {
-      throw new BadRequestException('转账金额必须为正整数（分）');
-    }
-    if (amountCents > 10_000_00) {
-      throw new BadRequestException('单笔转账不能超过 10 万元');
-    }
-    // 按邮箱查收款方
+    // 按对方邮箱查出收款方；金额校验走统一入口（见文件顶部 MAX_TXN_CENTS）
+    assertPositiveCents(amountCents, '转账');
+    assertSingleLimit(amountCents, '转账');
     const target = await this.profiles.findOne({
       where: { email: toAccount.toLowerCase() },
     });
@@ -431,9 +457,7 @@ export class PaymentsService {
     refId: string;
     note?: string | null;
   }): Promise<BalanceTransactionEntity> {
-    if (!Number.isInteger(params.amountCents) || params.amountCents <= 0) {
-      throw new BadRequestException('退款金额必须为正整数（分）');
-    }
+    assertPositiveCents(params.amountCents, '退款');
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       let balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: params.userId },
@@ -485,9 +509,7 @@ export class PaymentsService {
     if (!Number.isInteger(params.amountCents) || params.amountCents === 0) {
       throw new BadRequestException('调整金额必须为非零整数（分）');
     }
-    if (Math.abs(params.amountCents) > 10_000_00) {
-      throw new BadRequestException('单笔调整不能超过 10 万元');
-    }
+    assertSingleLimit(Math.abs(params.amountCents), '调整');
     const target = await this.profiles.findOne({ where: { userId: params.targetUserId } });
     if (!target) throw new NotFoundException('目标用户不存在');
 
@@ -608,16 +630,18 @@ export class PaymentsService {
         sumCents: string;
       }>();
 
-    // 按日期聚合
-    const byDate = new Map<string, { date: string; totalCents: number; byType: Record<string, number>; count: number }>();
+    // 按日期聚合。汇总数可能很大，全程字符串 + BigInt 运算，不转 Number。
+    const byDate = new Map<
+      string,
+      { date: string; totalCents: string; byType: Record<string, string>; count: number }
+    >();
     for (const r of rows) {
       if (!byDate.has(r.date)) {
-        byDate.set(r.date, { date: r.date, totalCents: 0, byType: {}, count: 0 });
+        byDate.set(r.date, { date: r.date, totalCents: '0', byType: {}, count: 0 });
       }
       const day = byDate.get(r.date)!;
-      const cents = Number(r.sumCents);
-      day.totalCents += cents;
-      day.byType[r.type] = cents;
+      day.totalCents = (BigInt(day.totalCents) + BigInt(r.sumCents)).toString();
+      day.byType[r.type] = r.sumCents;
       day.count += Number(r.count);
     }
     return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
@@ -686,6 +710,7 @@ export class PaymentsService {
    * - allTime：全量历史的各类型流水汇总
    */
   async adminReconcile(startDate?: string, endDate?: string) {
+    // 周期内分类汇总：SQL 端 SUM，结果是字符串，不转 Number。
     const qb = this.txns.createQueryBuilder('t');
     if (startDate) qb.andWhere('t.created_at >= :start', { start: startDate });
     if (endDate) qb.andWhere('t.created_at <= :end', { end: endDate + ' 23:59:59' });
@@ -696,25 +721,39 @@ export class PaymentsService {
       .groupBy('t.type')
       .getRawMany<{ type: string; sum: string; count: string }>();
 
-    const byType: Record<string, { sumCents: number; count: number }> = {};
+    const periodSummary: Record<string, { sumCents: string; count: number }> = {};
     for (const r of rows) {
-      byType[r.type] = { sumCents: Number(r.sum), count: Number(r.count) };
+      periodSummary[r.type] = { sumCents: r.sum, count: Number(r.count) };
     }
 
-    // 所有用户余额加总（不受日期限制，是"当前时点"口径）
-    const balRows = await this.balances.find();
-    const totalBalance = balRows.reduce((acc, r) => acc + Number(r.balanceCents), 0);
+    // 用户总余额：直接在数据库里 SUM，避免全表余额拉进内存，
+    // 也避免 JS Number 累加超过 2^53 后精度丢失。
+    const [totalRow, countRow] = await Promise.all([
+      this.dataSource
+        .createQueryBuilder()
+        .select('COALESCE(SUM(balance_cents), 0)', 'sum')
+        .from('user_balances', 'ub')
+        .getRawOne<{ sum: string }>(),
+      this.dataSource
+        .createQueryBuilder()
+        .select('COUNT(*)', 'c')
+        .from('user_balances', 'ub')
+        .getRawOne<{ c: string }>(),
+    ]);
+    const totalBalanceCents = BigInt(totalRow?.sum ?? '0');
 
-    // 全量流水加总（不受日期限制）
-    const sumByType = async (type: string) =>
-      this.txns
+    // 全量流水按类型加总（SQL SUM 返回字符串），用 BigInt 汇总
+    const sumByType = async (type: string) => {
+      const r = await this.txns
         .createQueryBuilder('t')
         .select('COALESCE(SUM(t.amount_cents), 0)', 'sum')
         .where('t.type = :type', { type })
-        .getRawOne<{ sum: string }>()
-        .then((r) => Number(r?.sum ?? 0));
+        .getRawOne<{ sum: string }>();
+      const cents = r?.sum ?? '0';
+      return { cents, big: BigInt(cents) };
+    };
 
-    const [rechargeSum, consumeSum, transferOutSum, transferInSum, refundSum, adjustSum] =
+    const [recharge, consume, transferOut, transferIn, refund, adjust] =
       await Promise.all([
         sumByType('recharge'),
         sumByType('consume'),
@@ -724,28 +763,28 @@ export class PaymentsService {
         sumByType('adjust'),
       ]);
     const ledgerSum =
-      rechargeSum + consumeSum + transferOutSum + transferInSum + refundSum + adjustSum;
+      recharge.big + consume.big + transferOut.big + transferIn.big + refund.big + adjust.big;
+    const diff = totalBalanceCents - ledgerSum;
 
-    const diff = totalBalance - ledgerSum;
     return {
       range: { startDate: startDate ?? null, endDate: endDate ?? null },
-      totalBalanceCents: totalBalance,
-      totalBalanceYuan: centsToYuan(totalBalance),
-      ledgerSumCents: ledgerSum,
-      ledgerSumYuan: centsToYuan(ledgerSum),
-      diffCents: diff,
-      diffYuan: centsToYuan(diff),
-      balanced: diff === 0,
-      periodSummary: byType,
+      totalBalanceCents: totalBalanceCents.toString(),
+      totalBalanceYuan: centsToYuan(totalBalanceCents.toString()),
+      ledgerSumCents: ledgerSum.toString(),
+      ledgerSumYuan: centsToYuan(ledgerSum.toString()),
+      diffCents: diff.toString(),
+      diffYuan: centsToYuan(diff.toString()),
+      balanced: diff === 0n,
+      periodSummary,
       allTime: {
-        rechargeSumCents: rechargeSum,
-        consumeSumCents: consumeSum,
-        transferOutSumCents: transferOutSum,
-        transferInSumCents: transferInSum,
-        refundSumCents: refundSum,
-        adjustSumCents: adjustSum,
+        rechargeSumCents: recharge.cents,
+        consumeSumCents: consume.cents,
+        transferOutSumCents: transferOut.cents,
+        transferInSumCents: transferIn.cents,
+        refundSumCents: refund.cents,
+        adjustSumCents: adjust.cents,
       },
-      userCount: balRows.length,
+      userCount: Number(countRow?.c ?? 0),
     };
   }
 }

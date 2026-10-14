@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import { MIN_TXN_CENTS } from '../payments.service.js';
 
 export class CreateRechargeDto {
   @ApiProperty({ example: 10000, description: '充值金额，单位分（10000 = ¥100.00）' })
   @IsInt()
-  @Min(100)
+  @Min(MIN_TXN_CENTS)
   amountCents: number;
 
   @ApiProperty({ enum: ['alipay', 'wechat', 'bank'] })
@@ -34,7 +35,7 @@ export class TransferDto {
 
   @ApiProperty({ example: 5000, description: '转账金额，单位分（5000 = ¥50.00）' })
   @IsInt()
-  @Min(100)
+  @Min(MIN_TXN_CENTS)
   amountCents: number;
 
   @ApiProperty({

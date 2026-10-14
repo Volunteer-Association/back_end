@@ -57,8 +57,8 @@
         <el-table-column prop="label" label="类型" />
         <el-table-column label="金额（元）">
           <template #default="{ row }">
-            <span :class="row.cents >= 0 ? 'amount-income' : 'amount-expense'">
-              {{ row.cents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.cents) / 100).toFixed(2) }}
+            <span :class="isNeg(row.cents) ? 'amount-expense' : 'amount-income'">
+              {{ isNeg(row.cents) ? '−' : '+' }}¥{{ formatCentsAbs(row.cents) }}
             </span>
           </template>
         </el-table-column>
@@ -128,8 +128,8 @@
         <el-table-column prop="date" label="日期" width="120" />
         <el-table-column label="当日净变动" width="130">
           <template #default="{ row }">
-            <span :class="row.totalCents >= 0 ? 'amount-income' : 'amount-expense'">
-              {{ row.totalCents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.totalCents) / 100).toFixed(2) }}
+            <span :class="isNeg(row.totalCents) ? 'amount-expense' : 'amount-income'">
+              {{ isNeg(row.totalCents) ? '−' : '+' }}¥{{ formatCentsAbs(row.totalCents) }}
             </span>
           </template>
         </el-table-column>
@@ -139,7 +139,7 @@
         <el-table-column label="分类明细" min-width="300">
           <template #default="{ row }">
             <span v-for="(v, k) in row.byType" :key="k" class="daily-type">
-              {{ typeLabel(k) }} {{ v >= 0 ? '+' : '−' }}¥{{ (Math.abs(v) / 100).toFixed(2) }}
+              {{ typeLabel(k) }} {{ isNeg(v) ? '−' : '+' }}¥{{ formatCentsAbs(v) }}
             </span>
           </template>
         </el-table-column>
@@ -181,13 +181,13 @@
         </el-table-column>
         <el-table-column label="变动" width="120">
           <template #default="{ row }">
-            <strong :class="row.amountCents >= 0 ? 'amount-income' : 'amount-expense'">
-              {{ row.amountCents >= 0 ? '+' : '−' }}¥{{ (Math.abs(row.amountCents) / 100).toFixed(2) }}
+            <strong :class="isNeg(row.amountCents) ? 'amount-expense' : 'amount-income'">
+              {{ isNeg(row.amountCents) ? '−' : '+' }}¥{{ formatCentsAbs(row.amountCents) }}
             </strong>
           </template>
         </el-table-column>
         <el-table-column label="余额" width="110">
-          <template #default="{ row }">¥{{ (row.balanceAfterCents / 100).toFixed(2) }}</template>
+          <template #default="{ row }">¥{{ formatCents(row.balanceAfterCents) }}</template>
         </el-table-column>
         <el-table-column prop="note" label="说明" min-width="200">
           <template #default="{ row }">{{ row.note || '—' }}</template>
@@ -318,6 +318,28 @@ function typeLabel(t: string) {
     refund: '退款',
     adjust: '调整',
   }[t as never] ?? t
+}
+
+/**
+ * 分 → 元字符串，字符串切分实现，任意位数安全。
+ * 汇总金额可能超过 JS Number 安全整数（2^53-1），禁止 Number(cents)/100。
+ */
+function formatCents(cents: string | number): string {
+  const raw = String(cents).trim()
+  const neg = raw.startsWith('-')
+  const digits = neg ? raw.slice(1) : raw
+  if (!digits) return '0.00'
+  const norm = digits.replace(/^0+(?=\d)/, '') || '0'
+  const intPart = norm.length <= 2 ? '0' : norm.slice(0, -2)
+  return `${neg ? '-' : ''}${intPart}.${norm.slice(-2).padStart(2, '0')}`
+}
+
+function formatCentsAbs(cents: string | number): string {
+  return formatCents(String(cents).replace(/^-/, ''))
+}
+
+function isNeg(cents: string | number): boolean {
+  return String(cents).trim().startsWith('-')
 }
 
 async function load() {

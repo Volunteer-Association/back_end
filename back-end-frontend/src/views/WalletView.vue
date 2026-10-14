@@ -104,7 +104,7 @@
       />
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="recharge-form">
         <el-form-item label="充值金额（元）" prop="amountYuan">
-          <el-input v-model="form.amountYuan" placeholder="如 100.00（最低 1 元）">
+          <el-input v-model="form.amountYuan" placeholder="如 100.00（1 元～10 万元）">
             <template #prepend>¥</template>
           </el-input>
         </el-form-item>
@@ -150,7 +150,7 @@
           <el-input v-model.trim="transferForm.toAccount" placeholder="如 friend@example.com" maxlength="100" />
         </el-form-item>
         <el-form-item label="转账金额（元）" prop="amountYuan">
-          <el-input v-model="transferForm.amountYuan" placeholder="最低 1 元">
+          <el-input v-model="transferForm.amountYuan" placeholder="最低 1 元，单笔上限 10 万元">
             <template #prepend>¥</template>
           </el-input>
         </el-form-item>
