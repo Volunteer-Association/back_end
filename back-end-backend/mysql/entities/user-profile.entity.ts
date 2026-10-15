@@ -80,6 +80,15 @@ export class UserProfileEntity {
   idType: number | null;
 
   @Column({
+    name: 'id_type_label',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: '证件类型中文名冗余（从字典 dict_items 同步，避免每次 join）',
+  })
+  idTypeLabel: string | null;
+
+  @Column({
     name: 'id_number',
     type: 'varchar',
     length: 50,

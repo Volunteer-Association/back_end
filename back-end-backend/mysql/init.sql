@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `payment_password_hash` VARCHAR(100) NULL COMMENT '支付密码哈希（bcrypt）；为空表示未设置。支付/转账时校验，与登录密码独立',
   `sex` TINYINT NULL DEFAULT 2 COMMENT '用户性别：0女、1男、2保密',
   `id_type` TINYINT NULL COMMENT '证件类型：1身份证、2护照、3港澳通行证、4台胞证、9其他',
+  `id_type_label` VARCHAR(50) NULL COMMENT '证件类型中文名冗余（从字典同步）',
   `id_number` VARCHAR(50) NULL COMMENT '证件号码',
   `address` VARCHAR(255) NULL COMMENT '联系地址',
   `creater` VARCHAR(50) NOT NULL DEFAULT '系统' COMMENT '创建人',
@@ -330,4 +331,10 @@ INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `s
 ('206', 'bill_category_expense', 'medical', '医疗', 6, 1),
 ('207', 'bill_category_expense', 'education', '教育', 7, 1),
 ('208', 'bill_category_expense', 'communication', '通讯', 8, 1),
-('209', 'bill_category_expense', 'other', '其他支出', 99, 1);
+('209', 'bill_category_expense', 'other', '其他支出', 99, 1),
+-- 证件类型
+('301', 'id_type', '1', '身份证', 1, 1),
+('302', 'id_type', '2', '护照', 2, 1),
+('303', 'id_type', '3', '港澳通行证', 3, 1),
+('304', 'id_type', '4', '台胞证', 4, 1),
+('305', 'id_type', '9', '其他', 99, 1);

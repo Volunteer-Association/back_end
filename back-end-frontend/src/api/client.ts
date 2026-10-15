@@ -3,9 +3,6 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from 'axios'
 
-const ACCESS_TOKEN_KEY = 'access_token'
-const LEGACY_TOKEN_KEY = 'token'
-const USER_KEY = 'user'
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || '/api'
 ).replace(/\/+$/, '')
@@ -15,23 +12,60 @@ export const http = axios.create({
   timeout: Number(import.meta.env.VITE_API_TIMEOUT || 10000),
 })
 
+/**
+ * Access Token 存 sessionStorage（不是 localStorage）：
+ * - 刷新页面还在，不用每次都调 /auth/refresh
+ * - 关闭标签页就清空，不跨标签持久化
+ * User 信息不持久化，启动时调 /auth/profile 拿。
+ * Refresh Token 在 HttpOnly Cookie 里，JS 读不到。
+ */
+const ACCESS_TOKEN_KEY = 'access_token'
+let accessToken = sessionStorage.getItem(ACCESS_TOKEN_KEY) ?? ''
+let currentUser: unknown = null
+
+function setToken(t: string) {
+  accessToken = t
+  if (t) sessionStorage.setItem(ACCESS_TOKEN_KEY, t)
+  else sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+}
+
+// 清理旧版本残留
+if (typeof window !== 'undefined') {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('token')
+  localStorage.removeItem('user')
+  sessionStorage.removeItem('user')
+}
+
+export function setAccessToken(token: string) {
+  setToken(token)
+}
+export function getAccessToken() {
+  return accessToken
+}
+export function setCurrentUser(user: unknown) {
+  currentUser = user
+}
+export function getCurrentUser() {
+  return currentUser
+}
+
 /** 每次 API 请求附带当前 Access Token；Refresh Token 不暴露给 JavaScript。 */
 http.interceptors.request.use((config) => {
-  const token = localStorage.getItem(ACCESS_TOKEN_KEY)
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`
   }
   return config
 })
 
-let refreshPromise: Promise<string> | null = null
+let refreshPromise: Promise<{ accessToken: string; user: unknown }> | null = null
 let sessionExpirationHandled = false
 
 /** 通过 HttpOnly Cookie 刷新短期 Access Token，并合并并发刷新请求。 */
-function refreshAccessToken(): Promise<string> {
+function refreshAccessToken(): Promise<{ accessToken: string; user: unknown }> {
   if (!refreshPromise) {
     refreshPromise = axios
-      .post<{ data?: { accessToken?: string } }>(
+      .post<{ data?: { accessToken?: string; user?: unknown } }>(
         `${API_BASE_URL}/auth/refresh`,
         undefined,
         {
@@ -40,13 +74,14 @@ function refreshAccessToken(): Promise<string> {
         },
       )
       .then(({ data }) => {
-        const accessToken = data.data?.accessToken
-        if (!accessToken) {
+        const token = data.data?.accessToken
+        if (!token) {
           throw new Error('Refresh response did not include an access token')
         }
-        localStorage.setItem(ACCESS_TOKEN_KEY, accessToken)
-        localStorage.removeItem(LEGACY_TOKEN_KEY)
-        return accessToken
+        accessToken = token
+        currentUser = data.data?.user ?? null
+        setToken(token)
+        return { accessToken: token, user: currentUser }
       })
       .finally(() => {
         refreshPromise = null
@@ -57,9 +92,9 @@ function refreshAccessToken(): Promise<string> {
 
 /** 清除所有本地会话缓存，供刷新失效时执行。 */
 function clearLocalSession() {
-  localStorage.removeItem(ACCESS_TOKEN_KEY)
-  localStorage.removeItem(LEGACY_TOKEN_KEY)
-  localStorage.removeItem(USER_KEY)
+  accessToken = ''
+  currentUser = null
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY)
   window.dispatchEvent(new Event('auth:session-expired'))
 
   const loginUrl = new URL(
@@ -112,8 +147,8 @@ http.interceptors.response.use(
 
     config._refreshRetried = true
     try {
-      const accessToken = await refreshAccessToken()
-      config.headers.Authorization = `Bearer ${accessToken}`
+      const { accessToken: token } = await refreshAccessToken()
+      config.headers.Authorization = `Bearer ${token}`
       return await http.request(config)
     } catch {
       clearLocalSession()
@@ -121,6 +156,19 @@ http.interceptors.response.use(
     }
   },
 )
+
+/**
+ * 应用启动时调用：尝试用 HttpOnly Cookie 里的 refresh token 恢复会话。
+ * 成功返回 true，失败（没 cookie 或过期）返回 false。
+ */
+export async function tryRestoreSession(): Promise<boolean> {
+  try {
+    await refreshAccessToken()
+    return true
+  } catch {
+    return false
+  }
+}
 
 /** 为业务模块提供统一的 Axios 请求方法，并只返回响应数据体。 */
 export const request = {

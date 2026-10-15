@@ -31,6 +31,7 @@ import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
 import { AuthResponseHelper } from './auth-response.helper.js';
 import { authenticatedUserId } from '../../common/http.util.js';
 import { RegistrationService } from './registration.service.js';
+import { DataSource } from 'typeorm';
 
 const AVATAR_DIR = join(process.cwd(), 'public', 'avatars');
 mkdirSync(AVATAR_DIR, { recursive: true });
@@ -43,6 +44,7 @@ export class ProfileController {
     private readonly usersService: UsersService,
     private readonly helper: AuthResponseHelper,
     private readonly registration: RegistrationService,
+    private readonly dataSource: DataSource,
   ) {}
 
   @Get('auth/profile')
@@ -68,26 +70,37 @@ export class ProfileController {
   @ApiResponse({ status: 401, description: '缺少或提供了无效的 Access Token。' })
   @ApiResponse({ status: 404, description: '用户详情不存在。' })
   async getProfile(@Req() request: Request & { user?: unknown }) {
-    const profile = await this.usersService.findProfile(
-      authenticatedUserId(request.user),
-    );
+    const userId = authenticatedUserId(request.user);
+    const [profile, authState, account] = await Promise.all([
+      this.usersService.findProfile(userId),
+      this.usersService.findAuthenticationState(userId),
+      this.usersService.findLocalCredentials(userId),
+    ]);
     if (!profile) throw new NotFoundException('用户资料不存在');
-    return profile;
+    // 连表返回完整信息：资料 + 账号信息（username/userId/roles/createdAt）
+    return {
+      ...profile,
+      id: userId,
+      username: account?.username ?? '',
+      roles: authState?.roles ?? [],
+      role: authState?.role ?? 'user',
+    };
   }
 
   @Get('auth/profile/options')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '个人资料相关枚举（证件类型等，后端字典下发）' })
-  profileOptions() {
+  @ApiOperation({ summary: '个人资料相关枚举（证件类型从数据字典查询，可在字典管理维护）' })
+  async profileOptions() {
+    // 直接查 dict_items，避免引入 DictModule 循环依赖
+    const rows = await this.dataSource.query(
+      `SELECT dict_key, item_value FROM dict_items WHERE dict_type = 'id_type' AND enabled = 1 ORDER BY sort_order ASC, created_at ASC`,
+    );
     return {
-      idTypes: [
-        { value: 1, label: '身份证' },
-        { value: 2, label: '护照' },
-        { value: 3, label: '港澳通行证' },
-        { value: 4, label: '台胞证' },
-        { value: 9, label: '其他' },
-      ],
+      idTypes: (rows as { dict_key: string; item_value: string }[]).map((r) => ({
+        value: Number(r.dict_key),
+        label: r.item_value,
+      })),
     };
   }
 
@@ -167,6 +180,21 @@ export class ProfileController {
 
     // emailCode 不是数据库字段，不能传给 update
     const { emailCode: _ignored, ...profileChanges } = dto;
+
+    // 如果传了证件类型，同步查字典中文名冗余到 id_type_label
+    if (dto.idType !== undefined) {
+      if (dto.idType === null) {
+        (profileChanges as Record<string, unknown>).idTypeLabel = null;
+      } else {
+        const rows = await this.dataSource.query(
+          `SELECT item_value FROM dict_items WHERE dict_type = 'id_type' AND dict_key = ? AND enabled = 1 LIMIT 1`,
+          [String(dto.idType)],
+        );
+        const row = rows as { item_value: string }[];
+        (profileChanges as Record<string, unknown>).idTypeLabel = row[0]?.item_value ?? null;
+      }
+    }
+
     const profile = await this.usersService.updateProfile(
       userId,
       credentials.username,

@@ -13,6 +13,7 @@ export interface EditableUserProfile {
   mobile?: string | null;
   sex?: number;
   idType?: number | null;
+  idTypeLabel?: string | null;
   idNumber?: string | null;
   address?: string | null;
   avatar?: string | null;
@@ -25,6 +26,7 @@ export interface UserProfile {
   mobile: string | null;
   sex: number | null;
   idType: number | null;
+  idTypeLabel: string | null;
   idNumber: string | null;
   address: string | null;
   createdAt: Date | null;
@@ -210,6 +212,7 @@ export class UsersRepository {
       mobile: profile.mobile,
       sex: profile.sex,
       idType: profile.idType,
+      idTypeLabel: profile.idTypeLabel,
       idNumber: profile.idNumber,
       address: profile.address,
       createdAt: profile.createdAt ?? null,

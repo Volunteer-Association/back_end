@@ -52,7 +52,13 @@
             <p class="meta-line">登录账号：<b>{{ accountInfo.username || '-' }}</b></p>
             <p class="meta-line">用户 ID：<code>{{ accountInfo.userId || '-' }}</code></p>
             <p class="meta-line">当前角色：
-              <el-tag v-for="r in accountInfo.roles" :key="r" size="small" class="role-tag">
+              <el-tag
+                v-for="r in accountInfo.roles"
+                :key="r"
+                size="small"
+                :type="roleTagType(r)"
+                class="role-tag"
+              >
                 {{ roleLabelMap.get(r) || r }}
               </el-tag>
             </p>
@@ -60,21 +66,33 @@
           </div>
         </div>
 
-        <!-- 资料表单 -->
-        <el-form label-position="top" class="profile-form">
+        <!-- 只读模式：label:value 横向列表 -->
+        <div v-if="!editing" class="readonly-list">
+          <div class="row"><span class="label">邮箱</span><span class="value">{{ profile.email || '-' }}</span></div>
+          <div class="row"><span class="label">昵称</span><span class="value">{{ profile.nickname || '-' }}</span></div>
+          <div class="row"><span class="label">手机号</span><span class="value">{{ profile.mobile || '未绑定' }}</span></div>
+          <div class="row"><span class="label">性别</span><span class="value">{{ genderLabel }}</span></div>
+          <div class="group-title">证件信息</div>
+          <div class="row"><span class="label">证件类型</span><span class="value">{{ idTypeLabel }}</span></div>
+          <div class="row"><span class="label">证件号码</span><span class="value">{{ profile.idNumber || '未填写' }}</span></div>
+          <div class="row"><span class="label">联系地址</span><span class="value">{{ profile.address || '未填写' }}</span></div>
+          <div class="action-row">
+            <el-button type="primary" @click="enterEdit">修改资料</el-button>
+          </div>
+        </div>
+
+        <!-- 编辑模式：表单输入 -->
+        <el-form v-else label-position="top" class="profile-form">
           <el-form-item label="邮箱">
             <el-input
               v-model.trim="profile.email"
-              :disabled="!editing"
               placeholder="用于登录和转账收款"
               maxlength="100"
             />
-            <div class="form-tip">
-              修改后用于登录和接收转账；如已被他人占用会提示
-            </div>
+            <div class="form-tip">修改后用于登录和接收转账；如已被他人占用会提示</div>
           </el-form-item>
 
-          <template v-if="editing && emailChanged">
+          <template v-if="emailChanged">
             <el-form-item label="邮箱验证码">
               <div class="code-row">
                 <el-input
@@ -97,7 +115,6 @@
           <el-form-item label="昵称">
             <el-input
               v-model.trim="profile.nickname"
-              :disabled="!editing"
               maxlength="60"
               show-word-limit
               placeholder="请输入昵称"
@@ -107,7 +124,6 @@
           <el-form-item label="手机号">
             <el-input
               v-model.trim="profile.mobile"
-              :disabled="!editing"
               maxlength="11"
               inputmode="numeric"
               placeholder="选填，11 位手机号"
@@ -115,7 +131,7 @@
           </el-form-item>
 
           <el-form-item label="性别">
-            <el-select v-model="profile.sex" :disabled="!editing" class="full-width">
+            <el-select v-model="profile.sex" class="full-width">
               <el-option label="保密" :value="2" />
               <el-option label="女" :value="0" />
               <el-option label="男" :value="1" />
@@ -125,16 +141,14 @@
           <el-divider content-position="left">证件信息</el-divider>
 
           <el-form-item label="证件类型">
-            <el-select v-if="editing" v-model="profile.idType" class="full-width" placeholder="请选择证件类型">
+            <el-select v-model="profile.idType" class="full-width" placeholder="请选择证件类型">
               <el-option v-for="t in idTypes" :key="t.value" :label="t.label" :value="t.value" />
             </el-select>
-            <el-input v-else :model-value="idTypeLabel" disabled />
           </el-form-item>
 
           <el-form-item label="证件号码">
             <el-input
               v-model.trim="profile.idNumber"
-              :disabled="!editing"
               maxlength="50"
               placeholder="请输入证件号码"
             />
@@ -143,7 +157,6 @@
           <el-form-item label="联系地址">
             <el-input
               v-model.trim="profile.address"
-              :disabled="!editing"
               type="textarea"
               :rows="2"
               maxlength="255"
@@ -153,13 +166,8 @@
           </el-form-item>
 
           <div class="action-row">
-            <template v-if="!editing">
-              <el-button type="primary" @click="enterEdit">修改资料</el-button>
-            </template>
-            <template v-else>
-              <el-button :loading="saving" type="primary" @click="saveProfile">保存</el-button>
-              <el-button @click="cancelEdit">取消</el-button>
-            </template>
+            <el-button :loading="saving" type="primary" @click="saveProfile">保存</el-button>
+            <el-button @click="cancelEdit">取消</el-button>
           </div>
         </el-form>
       </div>
@@ -186,7 +194,6 @@ import {
   sendChangeEmailCode,
   getProfileOptions,
   getRoleOptions,
-  type ProfileOptions,
   type RoleOption,
 } from '@/api/modules/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -208,6 +215,7 @@ const profile = reactive({
   sex: 2,
   avatar: '' as string | null,
   idType: null as number | null,
+  idTypeLabel: '',
   idNumber: '',
   address: '',
 })
@@ -236,9 +244,26 @@ const allRoles = ref<RoleOption[]>([])
 
 const roleLabelMap = computed(() => new Map(allRoles.value.map((r) => [r.value, r.label])))
 const idTypeLabel = computed(() => {
+  // 优先用后端冗余存的 label（字典改名后不会受影响）
+  if (profile.idTypeLabel) return profile.idTypeLabel
   const t = idTypes.value.find((x) => x.value === profile.idType)
   return t?.label || (profile.idType ? String(profile.idType) : '未设置')
 })
+
+const genderLabel = computed(() => {
+  switch (profile.sex) {
+    case 0: return '女'
+    case 1: return '男'
+    default: return '保密'
+  }
+})
+
+/** 不同角色用不同颜色：超管 danger、业务管理员 warning、普通用户 primary */
+function roleTagType(r: string): 'danger' | 'warning' | 'primary' {
+  if (r === 'super_admin') return 'danger'
+  if (r === 'admin') return 'warning'
+  return 'primary'
+}
 
 const emailChanged = computed(
   () => profile.email.trim().toLowerCase() !== initialEmail.value.trim().toLowerCase(),
@@ -270,14 +295,15 @@ async function loadProfile() {
     profile.sex = result.sex ?? 2
     profile.avatar = result.avatar
     profile.idType = result.idType ?? null
+    profile.idTypeLabel = result.idTypeLabel || ''
     profile.idNumber = result.idNumber || ''
     profile.address = result.address || ''
 
-    const u = auth.user
-    accountInfo.username = u?.username || ''
-    accountInfo.userId = u?.id || ''
-    accountInfo.roles = Array.isArray(u?.roles) ? u.roles : u?.role ? [u.role] : []
-    accountInfo.createdAt = (result.createdAt || u?.createdAt || '').slice(0, 10)
+    // accountInfo 直接从 profile 接口读（后端连表返回了完整信息）
+    accountInfo.username = result.username || ''
+    accountInfo.userId = result.id || ''
+    accountInfo.roles = Array.isArray(result.roles) ? result.roles : result.role ? [result.role] : []
+    accountInfo.createdAt = (result.createdAt || '').slice(0, 10)
   } catch (error: unknown) {
     loadError.value = `无法读取个人资料：${errorMessage(error, '请稍后重试')}`
   } finally {
@@ -385,6 +411,14 @@ async function saveProfile() {
     profile.avatar = updated.avatar
     emailCode.value = ''
     editing.value = false
+    // 同步到全局 store，顶部导航头像/昵称立即刷新
+    auth.updateProfile({
+      email: updated.email,
+      nickname: updated.nickname,
+      avatar: updated.avatar,
+      mobile: updated.mobile,
+      sex: updated.sex,
+    })
     ElMessage.success('个人资料已保存')
   } catch (error: unknown) {
     ElMessage.error(errorMessage(error, '个人资料保存失败，请重试'))
@@ -467,6 +501,44 @@ async function loadOptions() {
 
 .full-width {
   width: 100%;
+}
+
+.read-text {
+  padding: 6px 0;
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.5;
+  min-height: 24px;
+}
+
+.readonly-list {
+  display: grid;
+  gap: 14px;
+}
+
+.readonly-list .row {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.readonly-list .label {
+  flex: 0 0 90px;
+  color: #909399;
+}
+
+.readonly-list .value {
+  color: #303133;
+  word-break: break-all;
+}
+
+.readonly-list .group-title {
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
+  font-weight: 600;
+  color: #303133;
 }
 
 .form-tip {

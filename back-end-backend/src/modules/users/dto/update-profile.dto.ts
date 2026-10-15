@@ -72,9 +72,8 @@ export class UpdateProfileDto {
   avatar?: string | null;
 
   @ApiPropertyOptional({
-    description: '证件类型：1身份证、2护照、3港澳通行证、4台胞证、9其他。',
+    description: '证件类型：对应数据字典 id_type 的 key（数字）。',
     example: 1,
-    enum: [1, 2, 3, 4, 9],
     nullable: true,
   })
   @IsOptional()

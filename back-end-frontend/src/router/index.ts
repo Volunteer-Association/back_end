@@ -138,13 +138,24 @@ function getActiveRole(): string {
   return auth.user?.role ?? 'user'
 }
 
-router.beforeEach((to) => {
+let sessionRestored = false
+
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (to.meta.public) {
     if (to.name === 'login' && auth.isAuthenticated) {
       return { name: 'home' }
     }
     return true
+  }
+
+  // 首次进入时：不管 token 在不在，只要 user 没加载就调 restore
+  // restore 内部：有 token 调 /auth/profile 拿 user，没 token 调 /auth/refresh
+  if (!sessionRestored) {
+    sessionRestored = true
+    if (!auth.user) {
+      await auth.restore()
+    }
   }
 
   if (!auth.isAuthenticated) {

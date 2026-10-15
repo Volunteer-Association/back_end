@@ -48,6 +48,11 @@ export const DICT_TYPE_OPTIONS: DictTypeOption[] = [
     label: '账单·支出分类',
     keyHint: '英文标识，如 food；同一类型内保持唯一',
   },
+  {
+    value: 'id_type',
+    label: '证件类型',
+    keyHint: '数字键，如 1=身份证；item_value 存中文名称',
+  },
 ];
 
 @Injectable()

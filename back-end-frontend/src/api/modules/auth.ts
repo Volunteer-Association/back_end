@@ -1,5 +1,7 @@
 import { request } from '../client'
 
+export { setAccessToken, setCurrentUser, tryRestoreSession, getAccessToken, getCurrentUser } from '../client'
+
 /** 登录后可安全放入前端会话状态的用户字段，不包含密码或认证密钥。 */
 export interface LoginUser {
   id: string
@@ -17,12 +19,17 @@ export interface LoginUser {
 }
 
 export interface UserProfile {
+  id: string
+  username: string
   email: string
   nickname: string | null
   avatar: string | null
   mobile: string | null
   sex: number | null
+  role?: string
+  roles?: string[]
   idType?: number | null
+  idTypeLabel?: string | null
   idNumber?: string | null
   address?: string | null
   createdAt?: string | null
