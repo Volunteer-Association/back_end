@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS `bills` (
   `transaction_date` DATE NOT NULL COMMENT '交易日期',
   `note` VARCHAR(500) NULL COMMENT '备注',
   `paid_at` DATETIME NULL COMMENT '支付完成时间；为空表示尚未支付',
+  `refunded_at` DATETIME NULL COMMENT '退款完成时间；为空表示未退款。与 paid_at 组合出三态：待支付/已支付/已退款(终态)',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),

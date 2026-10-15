@@ -106,6 +106,7 @@
           <el-table-column label="支付状态" width="100">
             <template #default="{ row }">
               <el-tag v-if="row.type === 'income'" type="info" size="small">—</el-tag>
+              <el-tag v-else-if="row.refundedAt" type="info" size="small">已退款</el-tag>
               <el-tag v-else-if="row.paidAt" type="success" size="small">已支付</el-tag>
               <el-tag v-else type="warning" size="small">待支付</el-tag>
             </template>
@@ -117,19 +118,29 @@
           <el-table-column label="操作" width="200" fixed="right">
             <template #default="{ row }">
               <el-button
-                v-if="row.type === 'expense' && !row.paidAt"
+                v-if="row.type === 'expense' && !row.paidAt && !row.refundedAt"
                 text
                 type="success"
                 @click="payNow(row)"
               >支付</el-button>
               <el-button
-                v-if="row.type === 'expense' && row.paidAt"
+                v-if="row.type === 'expense' && row.paidAt && !row.refundedAt"
                 text
                 type="warning"
                 @click="refundNow(row)"
               >退款</el-button>
+              <el-button
+                v-if="row.type === 'expense' && row.refundedAt"
+                text
+                disabled
+              >已退款</el-button>
               <el-button text type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button text type="danger" @click="confirmDelete(row)">删除</el-button>
+              <el-button
+                v-if="!row.paidAt"
+                text
+                type="danger"
+                @click="confirmDelete(row)"
+              >删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -144,9 +155,9 @@
                 <strong>{{ item.category }}</strong>
                 <el-tag
                   v-if="item.type === 'expense'"
-                  :type="item.paidAt ? 'success' : 'warning'"
+                  :type="item.refundedAt ? 'info' : item.paidAt ? 'success' : 'warning'"
                   size="small"
-                >{{ item.paidAt ? '已支付' : '待支付' }}</el-tag>
+                >{{ item.refundedAt ? '已退款' : item.paidAt ? '已支付' : '待支付' }}</el-tag>
               </div>
               <strong :class="item.type === 'income' ? 'amount-income' : 'amount-expense'">
                 {{ item.type === 'income' ? '+' : '−' }}¥{{ formatAmount(item.amount) }}
@@ -157,19 +168,24 @@
               <time>{{ item.transactionDate }}</time>
               <span>
                 <el-button
-                  v-if="item.type === 'expense' && !item.paidAt"
+                  v-if="item.type === 'expense' && !item.paidAt && !item.refundedAt"
                   text
                   type="success"
                   @click="payNow(item)"
                 >支付</el-button>
                 <el-button
-                  v-if="item.type === 'expense' && item.paidAt"
+                  v-if="item.type === 'expense' && item.paidAt && !item.refundedAt"
                   text
                   type="warning"
                   @click="refundNow(item)"
                 >退款</el-button>
                 <el-button text type="primary" @click="openEdit(item)">编辑</el-button>
-                <el-button text type="danger" @click="confirmDelete(item)">删除</el-button>
+                <el-button
+                  v-if="!item.paidAt"
+                  text
+                  type="danger"
+                  @click="confirmDelete(item)"
+                >删除</el-button>
               </span>
             </div>
           </article>
@@ -199,7 +215,7 @@
         @submit.prevent
       >
         <el-form-item label="收支类型" prop="type">
-          <el-radio-group v-model="form.type" @change="onFormTypeChange">
+          <el-radio-group v-model="form.type" :disabled="editingLocked" @change="onFormTypeChange">
             <el-radio-button value="expense">支出</el-radio-button>
             <el-radio-button value="income">收入</el-radio-button>
           </el-radio-group>
@@ -220,9 +236,13 @@
             inputmode="decimal"
             maxlength="13"
             placeholder="请输入金额"
+            :disabled="editingLocked"
           >
             <template #prepend>¥</template>
           </el-input>
+          <div v-if="editingLocked" class="form-hint">
+            该账单已进入支付/退款终态，金额与收支类型不可修改。
+          </div>
         </el-form-item>
         <el-form-item label="日期" prop="transactionDate">
           <el-date-picker
@@ -356,6 +376,26 @@ const formRules: FormRules<BillInput> = {
   transactionDate: [{ required: true, message: '请选择日期', trigger: 'change' }],
 }
 
+/** 正在编辑的账单是否已进入支付/退款终态——这些状态下金额/类型字段锁定。 */
+const editingLocked = computed(
+  () => Boolean(editingBill.value?.paidAt || editingBill.value?.refundedAt),
+)
+
+/**
+ * 从后端错误响应里提取人类可读的消息。
+ * 后端 ValidationPipe 失败时 message 是 string[]，其他业务异常是 string；
+ * 网络错误/非 Axios 错误则回退到 fallback。
+ */
+function errorMessage(error: unknown, fallback: string): string {
+  if (typeof error === 'object' && error !== null) {
+    const e = error as { message?: unknown; error?: string }
+    if (Array.isArray(e.message)) return e.message.filter(Boolean).join('；')
+    if (typeof e.message === 'string' && e.message) return e.message
+    if (typeof e.error === 'string' && e.error) return e.error
+  }
+  return fallback
+}
+
 function formatAmount(value: string) {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value)
   if (!match) return '0.00'
@@ -395,8 +435,10 @@ async function loadPage(targetPage: number, append = false) {
     page.value = result.page
     total.value = result.total
     summary.value = totals
-  } catch {
-    if (requestId === latestRequestId) ElMessage.error('加载账单失败，请稍后重试')
+  } catch (e: unknown) {
+    if (requestId === latestRequestId) {
+      ElMessage.error(errorMessage(e, '加载账单失败，请稍后重试'))
+    }
   } finally {
     if (requestId === latestRequestId) loading.value = false
   }
@@ -463,8 +505,8 @@ async function saveBill() {
     ElMessage.success(editingBill.value ? '账单已更新' : '账单已添加')
     dialogVisible.value = false
     await reload()
-  } catch {
-    ElMessage.error('保存账单失败，请检查后重试')
+  } catch (e: unknown) {
+    ElMessage.error(errorMessage(e, '保存账单失败，请检查后重试'))
   } finally {
     saving.value = false
   }
@@ -484,8 +526,8 @@ async function confirmDelete(bill: Bill) {
     await deleteBill(bill.id)
     ElMessage.success('账单已删除')
     await reload()
-  } catch {
-    ElMessage.error('删除账单失败，请稍后重试')
+  } catch (e: unknown) {
+    ElMessage.error(errorMessage(e, '删除账单失败，请稍后重试'))
   }
 }
 
@@ -506,16 +548,14 @@ async function payNow(bill: Bill) {
     const idx = items.value.findIndex((b) => b.id === bill.id)
     if (idx >= 0) items.value[idx] = updated
   } catch (e: unknown) {
-    const msg =
-      (e as { message?: string })?.message || '支付失败，请稍后重试'
-    ElMessage.error(msg)
+    ElMessage.error(errorMessage(e, '支付失败，请稍后重试'))
   }
 }
 
 async function refundNow(bill: Bill) {
   try {
     await ElMessageBox.confirm(
-      `将把 ¥${formatAmount(bill.amount)} 退回你的余额，账单变回待支付状态，确认退款？`,
+      `将按实际扣款金额 ¥${formatAmount(bill.amount)} 退回你的余额，账单将进入「已退款」状态，确认退款？`,
       '账单退款',
       { confirmButtonText: '确认退款', cancelButtonText: '取消', type: 'warning' },
     )
@@ -528,7 +568,7 @@ async function refundNow(bill: Bill) {
     const idx = items.value.findIndex((b) => b.id === bill.id)
     if (idx >= 0) items.value[idx] = updated
   } catch (e: unknown) {
-    ElMessage.error((e as { message?: string })?.message || '退款失败，请稍后重试')
+    ElMessage.error(errorMessage(e, '退款失败，请稍后重试'))
   }
 }
 
@@ -631,6 +671,13 @@ onMounted(async () => {
 
 .full-width {
   width: 100%;
+}
+
+.form-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #b88230;
+  line-height: 1.5;
 }
 
 .bill-item {

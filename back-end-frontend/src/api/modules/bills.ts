@@ -12,7 +12,13 @@ export interface Bill {
   amount: string
   transactionDate: string
   note: string | null
+  /** 支付完成时间；为空表示尚未支付 */
   paidAt: string | null
+  /** 退款完成时间；为空表示未退款。三态：
+   *  paidAt=null & refundedAt=null → 待支付
+   *  paidAt!=null & refundedAt=null → 已支付
+   *  paidAt!=null & refundedAt!=null → 已退款（终态） */
+  refundedAt: string | null
   createdAt: string
   updatedAt: string
 }

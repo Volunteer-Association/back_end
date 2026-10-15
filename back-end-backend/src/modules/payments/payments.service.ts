@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
   BalanceTransactionEntity,
   RechargeOrderEntity,
@@ -371,6 +371,13 @@ export class PaymentsService {
         throw new ConflictException(`充值单已${order.status === 'approved' ? '审核通过' : '驳回'}`);
       }
 
+      // 纵深防御：申请时已经校验过金额，但审核时再复验一次——
+      // 防止数据库被手动改过、或历史脏数据里 amountCents 异常，
+      // 避免管理员一点审核就给用户加上一笔巨额余额。
+      const amount = Number(order.amountCents);
+      assertPositiveCents(amount, '充值到账');
+      assertSingleLimit(amount, '充值到账');
+
       // 加余额（不存在则创建）
       let balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: order.userId },
@@ -383,7 +390,6 @@ export class PaymentsService {
           version: 0,
         });
       }
-      const amount = Number(order.amountCents);
       const after = Number(balance.balanceCents) + amount;
       balance.balanceCents = String(after);
       balance.version += 1;
@@ -427,19 +433,25 @@ export class PaymentsService {
     if (!note) {
       throw new BadRequestException('驳回时必须填写驳回原因');
     }
-    const order = await this.recharges.findOne({ where: { id: rechargeId } });
-    if (!order) throw new NotFoundException('充值单不存在');
-    if (order.status !== 'pending') {
-      throw new ConflictException('该充值单已处理');
-    }
-    order.status = 'rejected';
-    order.reviewedBy = adminId;
-    order.reviewNote = note;
-    order.adminNote = adminNote?.trim() || null;
-    order.reviewedAt = new Date();
-    const saved = await this.recharges.save(order);
+    // 加行锁，防止两个管理员同时点「驳回」时互相覆盖审核人/备注。
+    const order = await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      const locked = await manager.findOne(RechargeOrderEntity, {
+        where: { id: rechargeId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!locked) throw new NotFoundException('充值单不存在');
+      if (locked.status !== 'pending') {
+        throw new ConflictException('该充值单已处理');
+      }
+      locked.status = 'rejected';
+      locked.reviewedBy = adminId;
+      locked.reviewNote = note;
+      locked.adminNote = adminNote?.trim() || null;
+      locked.reviewedAt = new Date();
+      return manager.save(locked);
+    });
     const reviewerNames = await this.resolveDisplayNames([adminId]);
-    return this.toRechargeView(saved, reviewerNames.get(adminId));
+    return this.toRechargeView(order, reviewerNames.get(adminId));
   }
 
   // ===== 业务扣款（供 bills 等模块调用）=====
@@ -457,6 +469,8 @@ export class PaymentsService {
    * @param params.refType 关联业务类型（bill / recharge 等）
    * @param params.refId 关联业务单号
    * @param params.note 流水说明
+   * @param params.manager 可选。若外部已开启事务，传入 EntityManager 复用同一连接，
+   *   使「扣余额 + 写流水 + 改业务单状态」在同一事务里原子提交；不传则自行开事务。
    */
   async consume(params: {
     userId: string;
@@ -464,9 +478,10 @@ export class PaymentsService {
     refType: string;
     refId: string;
     note?: string | null;
+    manager?: EntityManager;
   }): Promise<BalanceTransactionEntity> {
     assertPositiveCents(params.amountCents, '扣款');
-    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+    const run = async (manager: EntityManager) => {
       const balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: params.userId },
         lock: { mode: 'pessimistic_write' },
@@ -483,14 +498,11 @@ export class PaymentsService {
         balance.version += 1;
         await manager.save(balance);
       } else {
-        // 极端并发兜底：理论上 current=0 < amount 已抛错，不会走到这里
-        // 但如果真走到，创建一条记录（此时 after 必为负，说明数据有问题）
-        await manager.save(
-          manager.create(UserBalanceEntity, {
-            userId: params.userId,
-            balanceCents: String(after),
-            version: 1,
-          }),
+        // 走到这里说明余额记录不存在但又不满足 current < amount——即 current=0 >= amount，
+        // 但 amount 是正数（assertPositiveCents 已保证），数学上不可能。
+        // 直接抛错，绝不静默创建一条负余额记录，否则会污染对账。
+        throw new BadRequestException(
+          `用户余额记录不存在，无法扣款（userId=${params.userId}）`,
         );
       }
       const txn = manager.create(BalanceTransactionEntity, {
@@ -505,7 +517,9 @@ export class PaymentsService {
         note: params.note ?? null,
       });
       return manager.save(txn);
-    });
+    };
+    if (params.manager) return run(params.manager);
+    return this.dataSource.transaction('READ COMMITTED', run);
   }
 
   // ===== 用户间转账 =====
@@ -648,6 +662,8 @@ export class PaymentsService {
    *
    * 与 consume 方向相反：consume 是扣钱，refund 是加钱。
    * 同样走事务 + 行锁，写一条 refund 类型流水（正金额）。
+   *
+   * @param params.manager 可选。外部事务传入 EntityManager 复用连接。
    */
   async refund(params: {
     userId: string;
@@ -655,9 +671,13 @@ export class PaymentsService {
     refType: string;
     refId: string;
     note?: string | null;
+    manager?: EntityManager;
   }): Promise<BalanceTransactionEntity> {
     assertPositiveCents(params.amountCents, '退款');
-    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+    // 纵深防御：即使调用方漏传上限，单笔退款也不能超过 10 万元，
+    // 防止上游 bug 或被攻击后凭空给用户加巨额余额。
+    assertSingleLimit(params.amountCents, '退款');
+    const run = async (manager: EntityManager) => {
       let balance = await manager.findOne(UserBalanceEntity, {
         where: { userId: params.userId },
         lock: { mode: 'pessimistic_write' },
@@ -687,7 +707,9 @@ export class PaymentsService {
           note: params.note ?? null,
         }),
       );
-    });
+    };
+    if (params.manager) return run(params.manager);
+    return this.dataSource.transaction('READ COMMITTED', run);
   }
 
   /**

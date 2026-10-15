@@ -83,6 +83,16 @@ export class BillEntity {
   })
   paidAt: Date | null;
 
+  @Column({
+    name: 'refunded_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '退款完成时间；为空表示未退款。与 paidAt 组合出三态：'
+      + 'paidAt=null&refundedAt=null=待支付；paidAt!=null&refundedAt=null=已支付；'
+      + 'paidAt!=null&refundedAt!=null=已退款（终态）',
+  })
+  refundedAt: Date | null;
+
   @CreateDateColumn({
     name: 'created_at',
     type: 'datetime',

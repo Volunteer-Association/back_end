@@ -157,6 +157,7 @@ export class BillsController {
   @Post(':id/refund')
   @ApiOperation({
     summary: '退款（把已支付账单的金额退回余额）',
+    description: '按实际扣款流水金额退款，退款后账单进入「已退款」终态。',
   })
   async refund(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
     const userId = this.userId(request);
