@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { NotificationEntity, type NotificationType } from '../../../mysql/entities/index.js';
@@ -103,5 +103,27 @@ export class NotificationsService {
       .where('user_id = :userId AND is_read = false', { userId })
       .execute();
     return { updated: result.affected ?? 0 };
+  }
+
+  /** 删除单条通知（仅本人；未读通知不允许删除，必须先标为已读）。 */
+  async deleteOne(userId: string, id: string) {
+    const notification = await this.repo.findOne({ where: { id, userId } });
+    if (!notification) throw new NotFoundException('通知不存在');
+    if (!notification.isRead) {
+      throw new BadRequestException('未读通知不能删除，请先标记为已读');
+    }
+    await this.repo.remove(notification);
+    return { success: true };
+  }
+
+  /** 清空所有已读通知，返回删除条数。未读通知保留。 */
+  async clearRead(userId: string) {
+    const result = await this.repo
+      .createQueryBuilder()
+      .delete()
+      .from(NotificationEntity)
+      .where('user_id = :userId AND is_read = true', { userId })
+      .execute();
+    return { deleted: result.affected ?? 0 };
   }
 }

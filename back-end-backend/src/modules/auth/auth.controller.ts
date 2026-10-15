@@ -181,6 +181,20 @@ export class AuthController {
     return response.json(this.helper.publicSession(session));
   }
 
+  @Get('auth/role-options')
+  @ApiOperation({ summary: '系统所有角色枚举（按 sortOrder 排序，供前端角色切换下拉用）' })
+  @UseGuards(AuthGuard)
+  roleOptions() {
+    // 角色列表硬编码在后端，后续加部门/新角色只改这里，前端不写死
+    return {
+      roles: [
+        { value: 'user', label: '普通用户', description: '个人账单、钱包、通知', sortOrder: 1 },
+        { value: 'admin', label: '业务管理员', description: '充值审核、对账、字典、日志', sortOrder: 2 },
+        { value: 'super_admin', label: '超级管理员', description: '用户与角色管理，不参与日常业务', sortOrder: 3 },
+      ],
+    };
+  }
+
   @Post('auth/refresh')
   @ApiOperation({
     summary: '刷新登录凭证',

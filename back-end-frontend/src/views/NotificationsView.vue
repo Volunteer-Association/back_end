@@ -8,6 +8,7 @@
         <el-button :disabled="unreadCount === 0" @click="onMarkAll">
           全部已读
         </el-button>
+        <el-button @click="onClearRead">清空已读</el-button>
       </template>
     </PageHeader>
 
@@ -44,7 +45,7 @@
         <el-table-column label="时间" width="170">
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <el-button
               v-if="!row.isRead"
@@ -54,7 +55,9 @@
             >
               标为已读
             </el-button>
-            <span v-else class="muted">—</span>
+            <el-button v-else text type="danger" @click.stop="onDelete(row)">
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -78,12 +81,15 @@
  * 通知中心：完整消息列表，支持全部/未读筛选、分页、标记已读。
  */
 import { onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import {
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  deleteNotification,
+  clearReadNotifications,
+  getNotificationTypes,
   type Notification,
 } from '@/api/modules/notifications'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -98,19 +104,10 @@ const pageSize = ref(20)
 const total = ref(0)
 const unreadCount = ref(0)
 
+// 通知类型枚举由后端下发
+const typeOptions = ref<{ value: string; label: string }[]>([])
 function typeLabel(t: string) {
-  return (
-    {
-      recharge_approved: '充值到账',
-      recharge_rejected: '充值驳回',
-      transfer_received: '转账到账',
-      transfer_sent: '转账转出',
-      balance_adjusted: '余额调整',
-      bill_paid: '账单支付',
-      bill_refunded: '账单退款',
-      system: '系统通知',
-    } as Record<string, string>
-  )[t] || t
+  return typeOptions.value.find((x) => x.value === t)?.label ?? t
 }
 
 async function load() {
@@ -166,7 +163,53 @@ async function onMarkAll() {
   }
 }
 
-onMounted(() => void load())
+async function onDelete(row: Notification) {
+  try {
+    await ElMessageBox.confirm('确定删除这条通知吗？', '删除通知', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    await deleteNotification(row.id)
+    ElMessage.success('已删除')
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '删除失败')
+  }
+}
+
+async function onClearRead() {
+  try {
+    await ElMessageBox.confirm(
+      '将删除所有已读通知，未读通知保留。此操作不可恢复。',
+      '清空已读通知',
+      { confirmButtonText: '清空', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    const r = await clearReadNotifications()
+    ElMessage.success(`已清空 ${r.deleted} 条已读通知`)
+    await load()
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '操作失败')
+  }
+}
+
+onMounted(async () => {
+  try {
+    const r = await getNotificationTypes()
+    typeOptions.value = r.types
+  } catch {
+    // 枚举拉取失败不阻塞列表
+  }
+  await load()
+})
 </script>
 
 <style scoped>

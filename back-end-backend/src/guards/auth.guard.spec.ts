@@ -29,6 +29,7 @@ describe('AuthGuard', () => {
     usersService.findAuthenticationState.mockResolvedValue({
       status: 'active',
       sessionVersion: 3,
+      role: 'user',
     });
     guard = new AuthGuard(
       jwtService as unknown as JwtService,
@@ -37,10 +38,9 @@ describe('AuthGuard', () => {
   });
 
   it('accepts and attaches a correctly typed access token', async () => {
+    // JWT payload 只留 sub/tokenType/sessionVersion，role 等敏感信息不进 token。
     const payload = {
       sub: '1234567890123456789',
-      username: 'sample',
-      role: 'user',
       tokenType: 'access',
       sessionVersion: 3,
     };
@@ -48,7 +48,12 @@ describe('AuthGuard', () => {
 
     await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(jwtService.verifyAsync).toHaveBeenCalledWith('access-token');
-    expect((request as Request & { user?: unknown }).user).toEqual(payload);
+    // request.user 只挂 sub + 实时从库里查出的 role，不回传 token 里的其他字段。
+    expect((request as Request & { user?: unknown }).user).toEqual({
+      sub: '1234567890123456789',
+      role: 'user',
+      sessionVersion: 3,
+    });
   });
 
   it('rejects tokens invalidated by a newer single-device login', async () => {
@@ -74,6 +79,7 @@ describe('AuthGuard', () => {
       usersService.findAuthenticationState.mockResolvedValue({
         status,
         sessionVersion: 3,
+        role: 'user',
       });
 
       await expect(guard.canActivate(context)).rejects.toBeInstanceOf(

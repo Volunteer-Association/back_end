@@ -55,7 +55,8 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Invalid token');
     }
 
-    // JWT 只验证签名和载荷；再查一次账号状态与版本，确保封禁或撤销会话可立即生效。
+    // JWT 只验证签名和载荷；再查一次账号状态、版本和角色，
+    // 确保封禁/降级/撤销会话可立即生效（不等 access token 过期）。
     const authenticationState =
       await this.usersService.findAuthenticationState(tokenPayload.sub);
     if (
@@ -65,8 +66,17 @@ export class AuthGuard implements CanActivate {
     ) {
       throw new UnauthorizedException('Invalid or expired session');
     }
-    Object.assign(request, { user: tokenPayload });
-    
+    // request.user 挂最小必要信息：sub、实时 roles 数组（权限叠加）、最高优先级 role（兼容旧代码）、sessionVersion。
+    // 业务接口应该用 roles.includes('xxx') 判断权限，而不是比较 role === 'admin'。
+    Object.assign(request, {
+      user: {
+        sub: tokenPayload.sub,
+        roles: authenticationState.roles,
+        role: authenticationState.role,
+        sessionVersion: tokenPayload.sessionVersion,
+      },
+    });
+
     return true;
   }
 

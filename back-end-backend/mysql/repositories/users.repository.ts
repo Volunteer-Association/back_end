@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import {
@@ -9,8 +9,12 @@ import {
 
 export interface EditableUserProfile {
   nickname?: string | null;
+  email?: string;
   mobile?: string | null;
   sex?: number;
+  idType?: number | null;
+  idNumber?: string | null;
+  address?: string | null;
   avatar?: string | null;
 }
 
@@ -20,6 +24,10 @@ export interface UserProfile {
   avatar: string | null;
   mobile: string | null;
   sex: number | null;
+  idType: number | null;
+  idNumber: string | null;
+  address: string | null;
+  createdAt: Date | null;
 }
 
 export interface SessionSettings {
@@ -35,14 +43,19 @@ export type AuthenticationUser = Pick<
   | 'nickname'
   | 'avatar'
   | 'role'
+  | 'roles'
   | 'status'
   | 'sessionVersion'
 >;
 
-export type AuthenticationState = Pick<
-  UserEntity,
-  'status' | 'sessionVersion'
->;
+export type AuthenticationState = {
+  status: UserEntity['status'];
+  sessionVersion: number;
+  /** 用户拥有的所有角色 key 列表（如 ['user','admin','super_admin']），权限叠加而非互斥。 */
+  roles: string[];
+  /** 兼容旧逻辑：取最高优先级角色（super_admin > admin > user）。 */
+  role: UserEntity['role'];
+};
 
 @Injectable()
 /** 封装认证账号和用户详情的数据库读写操作。 */
@@ -68,11 +81,21 @@ export class UsersRepository {
       .getOne();
   }
 
-  findAuthenticationState(userId: string): Promise<AuthenticationState | null> {
-    return this.repository.findOne({
-      select: { status: true, sessionVersion: true },
-      where: { userId },
-    });
+  async findAuthenticationState(userId: string): Promise<AuthenticationState | null> {
+    // role 不是 pms_user 的列，而是 user_roles 关联表的多对多结果，
+    // 这里 leftJoin 出来后在 service 层用同样的逻辑算出 'admin'/'user'。
+    const user = await this.repository
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.roles', 'role')
+      .where('user.user_id = :userId', { userId })
+      .getOne();
+    if (!user) return null;
+    return {
+      status: user.status,
+      sessionVersion: user.sessionVersion,
+      roles: (user.roles ?? []).map((r) => r.key),
+      role: user.role,
+    };
   }
 
   async findSessionSettings(userId: string): Promise<SessionSettings | null> {
@@ -186,6 +209,10 @@ export class UsersRepository {
       avatar: profile.avatar,
       mobile: profile.mobile,
       sex: profile.sex,
+      idType: profile.idType,
+      idNumber: profile.idNumber,
+      address: profile.address,
+      createdAt: profile.createdAt ?? null,
     };
   }
 
@@ -195,15 +222,24 @@ export class UsersRepository {
     operator: string,
     changes: EditableUserProfile,
   ): Promise<UserProfile | null> {
-    const result = await this.profileRepository.update(
-      { userId },
-      {
-        ...changes,
-        operator,
-        operatorId: userId,
-      },
-    );
-    if (!result.affected) return null;
-    return this.findProfile(userId);
+    try {
+      const result = await this.profileRepository.update(
+        { userId },
+        {
+          ...changes,
+          operator,
+          operatorId: userId,
+        },
+      );
+      if (!result.affected) return null;
+      return this.findProfile(userId);
+    } catch (e) {
+      // email 有唯一索引，冲突时抛出友好错误
+      const driver = (e as { driverError?: { code?: string } })?.driverError;
+      if (driver?.code === 'ER_DUP_ENTRY') {
+        throw new ConflictException('该邮箱已被其他账号使用');
+      }
+      throw e;
+    }
   }
 }

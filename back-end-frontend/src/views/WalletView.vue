@@ -7,6 +7,7 @@
       <template #actions>
         <el-button type="primary" @click="openTransfer">转账</el-button>
         <el-button type="primary" @click="openRecharge">申请充值</el-button>
+        <el-button @click="openPaymentPassword">支付密码</el-button>
       </template>
     </PageHeader>
 
@@ -182,10 +183,74 @@
         <el-form-item label="备注" prop="note">
           <el-input v-model="transferForm.note" type="textarea" :rows="2" maxlength="200" placeholder="选填" />
         </el-form-item>
+        <el-form-item label="支付密码" prop="paymentPassword">
+          <el-input
+            v-model="transferForm.paymentPassword"
+            type="password"
+            maxlength="6"
+            show-password
+            placeholder="请输入 6 位支付密码"
+          />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="transferVisible = false">取消</el-button>
         <el-button type="primary" :loading="transferring" @click="submitTransfer">确认转账</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 支付密码设置/修改弹窗：所有密码框都带眼睛图标，设置/修改需二次确认一致 -->
+    <el-dialog
+      v-model="pwdDialogVisible"
+      :title="pwdMode === 'setup' ? '设置支付密码' : '修改支付密码'"
+      width="min(420px, calc(100vw - 32px))"
+      destroy-on-close
+    >
+      <el-alert
+        v-if="pwdMode === 'setup'"
+        type="info"
+        :closable="false"
+        title="支付密码用于账单支付、余额转账时验证，请务必记住"
+        style="margin-bottom: 14px"
+      />
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item v-if="pwdMode === 'change'" label="原支付密码">
+          <el-input
+            v-model="pwdForm.oldPwd"
+            type="password"
+            show-password
+            maxlength="6"
+            placeholder="请输入原支付密码"
+            inputmode="numeric"
+          />
+        </el-form-item>
+        <el-form-item :label="pwdMode === 'setup' ? '新支付密码' : '新支付密码'">
+          <el-input
+            v-model="pwdForm.newPwd"
+            type="password"
+            show-password
+            maxlength="6"
+            placeholder="6 位数字"
+            inputmode="numeric"
+          />
+        </el-form-item>
+        <el-form-item label="确认新支付密码">
+          <el-input
+            v-model="pwdForm.confirmPwd"
+            type="password"
+            show-password
+            maxlength="6"
+            placeholder="请再次输入新支付密码"
+            inputmode="numeric"
+            @keyup.enter="submitPwdDialog"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="pwdDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="pwdSubmitting" @click="submitPwdDialog">
+          {{ pwdMode === 'setup' ? '确认设置' : '确认修改' }}
+        </el-button>
       </template>
     </el-dialog>
   </section>
@@ -204,7 +269,7 @@
  */
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import {
   getBalance,
@@ -212,6 +277,10 @@ import {
   listMyTxns,
   requestRecharge,
   transfer,
+  getPaymentPasswordStatus,
+  setupPaymentPassword,
+  changePaymentPassword,
+  getPaymentsOptions,
   type BalanceInfo,
   type RechargeChannel,
   type RechargeOrder,
@@ -248,10 +317,9 @@ const rules: FormRules = {
 const transferVisible = ref(false)
 const transferring = ref(false)
 const transferFormRef = ref<FormInstance>()
-const transferForm = reactive({ toAccount: '', amountYuan: '', note: '' })
+const transferForm = reactive({ toAccount: '', amountYuan: '', note: '', paymentPassword: '' })
 const transferRequestId = ref('')
-const transferRules: FormRules = {
-  toAccount: [
+const transferRules: FormRules = {  toAccount: [
     { required: true, message: '请输入收款方邮箱' },
     { type: 'email', message: '邮箱格式不正确' },
   ],
@@ -259,22 +327,34 @@ const transferRules: FormRules = {
     { required: true, message: '请输入金额' },
     { pattern: /^(?:0|[1-9]\d*)(?:\.\d{1,2})?$/, message: '金额格式不正确' },
   ],
+  paymentPassword: [
+    { required: true, message: '请输入支付密码' },
+    { pattern: /^\d{6}$/, message: '支付密码必须是 6 位数字' },
+  ],
 }
 
-function channelLabel(c: RechargeChannel) {
-  return { alipay: '支付宝', wechat: '微信', bank: '银行转账' }[c]
+// 支付密码设置/修改弹窗状态
+const pwdDialogVisible = ref(false)
+const pwdSubmitting = ref(false)
+const pwdMode = ref<'setup' | 'change'>('setup')
+const pwdForm = reactive({ oldPwd: '', newPwd: '', confirmPwd: '' })
+
+// 业务枚举（充值状态、渠道）由后端下发，前端不写死
+const paymentOptions = ref<{
+  rechargeStatuses: { value: string; label: string }[]
+  rechargeChannels: { value: string; label: string }[]
+}>({ rechargeStatuses: [], rechargeChannels: [] })
+
+function channelLabel(c: string) {
+  return paymentOptions.value.rechargeChannels.find((x) => x.value === c)?.label ?? c
 }
 
 function statusTag(s: string) {
-  return { pending: 'warning', approved: 'success', rejected: 'danger' }[
-    s as 'pending' | 'approved' | 'rejected'
-  ] as never
+  return ({ pending: 'warning', approved: 'success', rejected: 'danger' } as Record<string, string>)[s] ?? 'info'
 }
 
 function statusLabel(s: string) {
-  return { pending: '待审核', approved: '已到账', rejected: '已驳回' }[
-    s as 'pending' | 'approved' | 'rejected'
-  ]
+  return paymentOptions.value.rechargeStatuses.find((x) => x.value === s)?.label ?? s
 }
 
 function txnTypeLabel(t: string) {
@@ -297,10 +377,57 @@ function openRecharge() {
   dialogVisible.value = true
 }
 
+/** 支付密码设置/修改入口：查状态后打开统一弹窗。 */
+async function openPaymentPassword() {
+  let status: { set: boolean }
+  try {
+    status = await getPaymentPasswordStatus()
+  } catch {
+    ElMessage.error('查询支付密码状态失败')
+    return
+  }
+  pwdMode.value = status.set ? 'change' : 'setup'
+  pwdForm.oldPwd = ''
+  pwdForm.newPwd = ''
+  pwdForm.confirmPwd = ''
+  pwdDialogVisible.value = true
+}
+
+async function submitPwdDialog() {
+  if (!/^\d{6}$/.test(pwdForm.newPwd)) {
+    ElMessage.error('新支付密码必须是 6 位数字')
+    return
+  }
+  if (pwdForm.newPwd !== pwdForm.confirmPwd) {
+    ElMessage.error('两次输入的新密码不一致')
+    return
+  }
+  if (pwdMode.value === 'change' && !/^\d{6}$/.test(pwdForm.oldPwd)) {
+    ElMessage.error('请输入正确的原支付密码')
+    return
+  }
+  pwdSubmitting.value = true
+  try {
+    if (pwdMode.value === 'setup') {
+      await setupPaymentPassword(pwdForm.newPwd)
+      ElMessage.success('支付密码设置成功')
+    } else {
+      await changePaymentPassword(pwdForm.oldPwd, pwdForm.newPwd)
+      ElMessage.success('支付密码已修改')
+    }
+    pwdDialogVisible.value = false
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '操作失败，请稍后重试')
+  } finally {
+    pwdSubmitting.value = false
+  }
+}
+
 function openTransfer() {
   transferForm.toAccount = ''
   transferForm.amountYuan = ''
   transferForm.note = ''
+  transferForm.paymentPassword = ''
   // 每次打开对话框生成新的幂等键（类似微信/支付宝的商户订单号）
   transferRequestId.value =
     crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -326,6 +453,7 @@ async function submitTransfer() {
       amountCents,
       requestId: transferRequestId.value,
       note: transferForm.note || null,
+      paymentPassword: transferForm.paymentPassword,
     })
     const targetName = r.toNickname || r.toAccount
     ElMessage.success(`转账成功给 ${targetName}，剩余余额 ¥${(r.fromBalanceAfterCents / 100).toFixed(2)}`)
@@ -380,7 +508,14 @@ async function reload() {
   txns.value = await listMyTxns()
 }
 
-onMounted(() => void reload())
+onMounted(async () => {
+  try {
+    paymentOptions.value = await getPaymentsOptions()
+  } catch {
+    // 枚举拉取失败不阻塞页面
+  }
+  await reload()
+})
 </script>
 
 <style scoped>

@@ -172,7 +172,11 @@ export class BillsService {
    * 锁的意义：并发重复点击「支付」时，第二个事务会在 SELECT ... FOR UPDATE
    * 上阻塞，等第一个提交后读到 paidAt 已写入，直接抛「已支付」，不会重复扣款。
    */
-  async payWithBalance(userId: string, billId: string): Promise<BillEntity> {
+  async payWithBalance(
+    userId: string,
+    billId: string,
+    paymentPassword?: string,
+  ): Promise<BillEntity> {
     return this.dataSource.transaction('READ COMMITTED', async (manager) => {
       const bill = await manager.findOne(BillEntity, {
         where: { id: billId, userId },
@@ -182,6 +186,9 @@ export class BillsService {
       if (bill.type !== 'expense') throw new BadRequestException('收入账单无需支付');
       if (bill.refundedAt) throw new ConflictException('该账单已退款，如需支付请重新记一笔');
       if (bill.paidAt) throw new ConflictException('该账单已支付，请勿重复操作');
+
+      // 涉及余额扣款，必须先验证支付密码（类微信/支付宝）
+      await this.payments.assertPaymentPassword(userId, paymentPassword ?? '');
 
       const amountCents = yuanToCents(bill.amount);
       await this.payments.consume({

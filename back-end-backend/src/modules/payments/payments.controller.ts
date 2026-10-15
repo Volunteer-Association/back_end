@@ -18,7 +18,7 @@ import { LoggingService } from '../logging/logging.service.js';
 import { IdempotencyService } from '../common/idempotency.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PaymentsService } from './payments.service.js';
-import { CreateRechargeDto, TransferDto } from './dto/payments.dto.js';
+import { CreateRechargeDto, TransferDto, SetupPaymentPasswordDto, ChangePaymentPasswordDto } from './dto/payments.dto.js';
 
 @ApiTags('支付-用户端')
 @ApiBearerAuth()
@@ -31,6 +31,23 @@ export class PaymentsController {
     private readonly idempotency: IdempotencyService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  @Get('options')
+  @ApiOperation({ summary: '业务枚举：充值订单状态、充值渠道' })
+  options() {
+    return {
+      rechargeStatuses: [
+        { value: 'pending', label: '待审核', description: '已提交，等待管理员核对到账' },
+        { value: 'approved', label: '已到账', description: '管理员已确认到账' },
+        { value: 'rejected', label: '已驳回', description: '管理员未通过申请' },
+      ],
+      rechargeChannels: [
+        { value: 'alipay', label: '支付宝' },
+        { value: 'wechat', label: '微信' },
+        { value: 'bank', label: '银行转账' },
+      ],
+    };
+  }
 
   @Get('balance')
   @ApiOperation({ summary: '查询我的账户余额' })
@@ -105,6 +122,7 @@ export class PaymentsController {
           dto.toAccount.trim(),
           dto.amountCents,
           dto.note,
+          dto.paymentPassword,
         ),
     });
     if (!reused) {
@@ -138,5 +156,37 @@ export class PaymentsController {
       });
     }
     return result;
+  }
+
+  // ===== 支付密码管理 =====
+
+  @Get('payment-password/status')
+  @ApiOperation({ summary: '查询是否已设置支付密码' })
+  paymentPasswordStatus(@Req() req: Request & { user?: { sub: string } }) {
+    return this.payments.hasPaymentPassword(req.user!.sub);
+  }
+
+  @Post('payment-password/setup')
+  @ApiOperation({ summary: '首次设置支付密码（6 位数字）' })
+  async setupPaymentPassword(
+    @Req() req: Request & { user?: { sub: string } },
+    @Body() dto: SetupPaymentPasswordDto,
+  ) {
+    await this.payments.setupPaymentPassword(req.user!.sub, dto.paymentPassword);
+    return { success: true };
+  }
+
+  @Post('payment-password/change')
+  @ApiOperation({ summary: '修改支付密码（需验证原密码）' })
+  async changePaymentPassword(
+    @Req() req: Request & { user?: { sub: string } },
+    @Body() dto: ChangePaymentPasswordDto,
+  ) {
+    await this.payments.changePaymentPassword(
+      req.user!.sub,
+      dto.oldPassword,
+      dto.newPassword,
+    );
+    return { success: true };
   }
 }

@@ -102,6 +102,7 @@ export function transfer(input: {
   amountCents: number
   requestId: string
   note?: string | null
+  paymentPassword: string
 }) {
   return request.post<{
     transferId: string
@@ -115,6 +116,37 @@ export function transfer(input: {
     fromBalanceAfterCents: number
     toBalanceAfterCents: number
   }>('/payments/transfer', input)
+}
+
+// ===== 支付密码 =====
+
+export function getPaymentPasswordStatus() {
+  return request.get<{ set: boolean }>('/payments/payment-password/status')
+}
+
+export interface DictOption {
+  value: string
+  label: string
+  description?: string
+}
+
+export function getPaymentsOptions() {
+  return request.get<{ rechargeStatuses: DictOption[]; rechargeChannels: DictOption[] }>(
+    '/payments/options',
+  )
+}
+
+export function setupPaymentPassword(paymentPassword: string) {
+  return request.post<{ success: true }>('/payments/payment-password/setup', {
+    paymentPassword,
+  })
+}
+
+export function changePaymentPassword(oldPassword: string, newPassword: string) {
+  return request.post<{ success: true }>('/payments/payment-password/change', {
+    oldPassword,
+    newPassword,
+  })
 }
 
 // ===== 管理员 =====

@@ -7,9 +7,13 @@ export interface LoginUser {
   email: string
   nickname: string | null
   avatar: string | null
-  role: 'admin' | 'user'
+  /** 最高优先级角色（兼容字段） */
+  role: 'super_admin' | 'admin' | 'user'
+  /** 用户拥有的所有角色，权限叠加：同时有 admin 和 super_admin 就两份权限都有 */
+  roles?: string[]
   mobile?: string | null
   sex?: number | null
+  createdAt?: string | null
 }
 
 export interface UserProfile {
@@ -18,6 +22,10 @@ export interface UserProfile {
   avatar: string | null
   mobile: string | null
   sex: number | null
+  idType?: number | null
+  idNumber?: string | null
+  address?: string | null
+  createdAt?: string | null
 }
 
 export interface SessionSettings {
@@ -107,6 +115,18 @@ export function logoutSession() {
   })
 }
 
+export interface RoleOption {
+  value: string
+  label: string
+  description?: string
+  sortOrder: number
+}
+
+/** 拉取系统所有角色枚举（供右上角角色切换下拉，后端排序）。 */
+export function getRoleOptions() {
+  return request.get<{ roles: RoleOption[] }>('/auth/role-options')
+}
+
 /** 查询当前用户是否已设置本地账号和密码。 */
 export function getPasswordStatus() {
   return request.get<{
@@ -138,11 +158,29 @@ export function getUserProfile() {
 /** 更新当前用户允许编辑的个人资料字段。 */
 export function updateUserProfile(data: {
   nickname?: string | null
+  email?: string
+  emailCode?: string
   mobile?: string | null
   sex?: number
   avatar?: string | null
+  idType?: number | null
+  idNumber?: string | null
+  address?: string | null
 }) {
   return request.patch<UserProfile>('/auth/profile', data)
+}
+
+/** 发送修改邮箱验证码到新邮箱。 */
+export function sendChangeEmailCode(email: string) {
+  return request.post<{ cooldownSeconds: number }>('/auth/profile/email-code', { email })
+}
+
+/** 个人资料相关枚举（证件类型等）。 */
+export interface ProfileOptions {
+  idTypes: { value: number; label: string }[]
+}
+export function getProfileOptions() {
+  return request.get<ProfileOptions>('/auth/profile/options')
 }
 
 /** 上传头像，返回 { url }；后端会自动写入用户资料。 */

@@ -7,7 +7,7 @@ import {
   UserEntity,
 } from '../entities/index.js';
 import { mapEnabledStatus } from '../entities/user.entity.js';
-import { REFRESH_TOKEN_TTL_SECONDS } from '../../config/auth.constants.js';
+import { REFRESH_TOKEN_TTL_SECONDS, ABSOLUTE_SESSION_TTL_SECONDS } from '../../config/auth.constants.js';
 
 @Injectable()
 /** 管理 Refresh Token 哈希，提供一次性轮换和撤销操作。 */
@@ -58,6 +58,10 @@ export class RefreshTokenRepository {
           expiresAt: new Date(
             now.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000,
           ),
+          sessionVersion: user.sessionVersion,
+          absoluteExpiresAt: new Date(
+            now.getTime() + ABSOLUTE_SESSION_TTL_SECONDS * 1000,
+          ),
         }),
       );
       return user.sessionVersion;
@@ -83,6 +87,12 @@ export class RefreshTokenRepository {
         .getOne();
       if (!current) return null;
 
+      // 1) 绝对会话时长到了：不管怎么刷新，30 天必须重登一次
+      if (current.absoluteExpiresAt <= now) return null;
+
+      // 2) 会话版本不一致：说明改密码/改角色/管理员强制下线，旧 refresh token 立即失效
+      if (current.sessionVersion !== current.user.sessionVersion) return null;
+
       const deletion = await tokens.delete({ tokenHash: currentHash });
       if (deletion.affected !== 1) return null;
 
@@ -93,6 +103,9 @@ export class RefreshTokenRepository {
           expiresAt: new Date(
             now.getTime() + REFRESH_TOKEN_TTL_SECONDS * 1000,
           ),
+          // 新 token 继承旧 token 的绝对过期时间，不延长
+          sessionVersion: current.user.sessionVersion,
+          absoluteExpiresAt: current.absoluteExpiresAt,
         }),
       );
       return current.user;

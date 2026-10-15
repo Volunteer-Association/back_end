@@ -87,6 +87,12 @@ const router = createRouter({
           meta: { admin: true, title: '钱包对账' },
         },
         {
+          path: 'admin/users',
+          name: 'admin-users',
+          component: () => import('@/views/AdminUsersView.vue'),
+          meta: { superAdmin: true, title: '用户管理' },
+        },
+        {
           path: 'upload',
           name: 'upload',
           component: () => import('@/views/FileUploadView.vue'),
@@ -121,7 +127,17 @@ const router = createRouter({
   ],
 })
 
-/** 统一执行页面登录检查及管理员页面的角色检查。 */
+/** 当前激活的角色（用户在右上角切换的那个），决定能进哪些页面。 */
+function getActiveRole(): string {
+  const auth = useAuthStore()
+  const stored = localStorage.getItem('active_role')
+  const roles = auth.user?.roles
+  if (Array.isArray(roles) && roles.length) {
+    return roles.includes(stored ?? '') ? (stored as string) : roles[0]
+  }
+  return auth.user?.role ?? 'user'
+}
+
 router.beforeEach((to) => {
   const auth = useAuthStore()
   if (to.meta.public) {
@@ -134,7 +150,11 @@ router.beforeEach((to) => {
   if (!auth.isAuthenticated) {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
-  if (to.meta.admin && auth.user?.role !== 'admin') {
+  const activeRole = getActiveRole()
+  if (to.meta.admin && activeRole !== 'admin') {
+    return { name: 'home' }
+  }
+  if (to.meta.superAdmin && activeRole !== 'super_admin') {
     return { name: 'home' }
   }
 

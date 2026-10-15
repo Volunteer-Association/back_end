@@ -34,6 +34,22 @@ export class RefreshTokenEntity {
   })
   createdAt: Date;
 
-  @Column({ name: 'expires_at', type: 'datetime', comment: '过期时间' })
+  @Column({ name: 'expires_at', type: 'datetime', comment: '滑动过期时间' })
   expiresAt: Date;
+
+  @Column({
+    name: 'session_version',
+    type: 'int',
+    unsigned: true,
+    default: 0,
+    comment: '签发时的会话版本号，rotate 时与用户当前版本比对，不一致则会话已被撤销',
+  })
+  sessionVersion: number;
+
+  @Column({
+    name: 'absolute_expires_at',
+    type: 'datetime',
+    comment: '会话绝对过期时间，rotate 时不延长，超过必须重新登录',
+  })
+  absoluteExpiresAt: Date;
 }

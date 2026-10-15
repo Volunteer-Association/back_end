@@ -73,9 +73,9 @@ export function deleteBill(id: string) {
   return request.delete<{ success: true }>(`/bills/${encodeURIComponent(id)}`)
 }
 
-/** 用账户余额支付支出账单。 */
-export function payBill(id: string) {
-  return request.post<Bill>(`/bills/${encodeURIComponent(id)}/pay`)
+/** 用账户余额支付支出账单（需传 6 位支付密码）。 */
+export function payBill(id: string, paymentPassword: string) {
+  return request.post<Bill>(`/bills/${encodeURIComponent(id)}/pay`, { paymentPassword })
 }
 
 /** 退款：把已支付账单的金额退回余额。 */

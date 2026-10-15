@@ -33,6 +33,8 @@ export interface AuthSession {
       nickname: string | null;
       avatar: string | null;
       role: UserRole;
+      roles?: string[];
+      createdAt?: string | null;
     };
   };
   refreshToken: string;
@@ -46,8 +48,9 @@ type SessionUser = Pick<
   | 'nickname'
   | 'avatar'
   | 'role'
+  | 'roles'
   | 'sessionVersion'
->;
+> & { createdAt?: Date | null }
 
 @Injectable()
 /** 处理本地认证、凭证设置及 Access/Refresh Token 会话生命周期。 */
@@ -218,11 +221,13 @@ export class AuthService {
     refreshToken: string,
     sessionVersion = user.sessionVersion,
   ): Promise<AuthSession> {
+    // JWT payload 只放最小必要字段：sub(用户ID)、tokenType、sessionVersion。
+    // 不放 username / role / email——JWT 是 base64 编码可被任何人解码，
+    // 放敏感信息会泄露用户资料；而且 role 放 token 里会导致降级后 15 分钟内仍有效，
+    // role 改由 AuthGuard 每次请求实时查库后挂到 request.user。
     const accessToken = await this.jwtService.signAsync(
       {
         sub: user.userId,
-        username: user.username,
-        role: user.role,
         tokenType: 'access',
         sessionVersion,
       },
@@ -241,6 +246,8 @@ export class AuthService {
           nickname: user.nickname,
           avatar: user.avatar,
           role: user.role,
+          roles: (user.roles ?? []).map((r) => r.key),
+          createdAt: user.createdAt?.toISOString?.() ?? null,
         },
       },
       refreshToken,

@@ -30,6 +30,7 @@ import { AuthGuard } from '../../guards/auth.guard.js';
 import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
 import { AuthResponseHelper } from './auth-response.helper.js';
 import { authenticatedUserId } from '../../common/http.util.js';
+import { RegistrationService } from './registration.service.js';
 
 const AVATAR_DIR = join(process.cwd(), 'public', 'avatars');
 mkdirSync(AVATAR_DIR, { recursive: true });
@@ -41,6 +42,7 @@ export class ProfileController {
   constructor(
     private readonly usersService: UsersService,
     private readonly helper: AuthResponseHelper,
+    private readonly registration: RegistrationService,
   ) {}
 
   @Get('auth/profile')
@@ -71,6 +73,43 @@ export class ProfileController {
     );
     if (!profile) throw new NotFoundException('用户资料不存在');
     return profile;
+  }
+
+  @Get('auth/profile/options')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '个人资料相关枚举（证件类型等，后端字典下发）' })
+  profileOptions() {
+    return {
+      idTypes: [
+        { value: 1, label: '身份证' },
+        { value: 2, label: '护照' },
+        { value: 3, label: '港澳通行证' },
+        { value: 4, label: '台胞证' },
+        { value: 9, label: '其他' },
+      ],
+    };
+  }
+
+  @Post('auth/profile/email-code')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '发送修改邮箱验证码到新邮箱' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['email'],
+      properties: { email: { type: 'string', format: 'email' } },
+    },
+  })
+  async sendEmailCode(
+    @Body() body: { email?: string },
+    @Req() request: Request & { user?: unknown },
+  ) {
+    if (!body?.email) throw new BadRequestException('请输入新邮箱');
+    const userId = authenticatedUserId(request.user);
+    const cooldown = await this.registration.sendChangeEmailCode(body.email, userId);
+    return { cooldownSeconds: cooldown };
   }
 
   @Patch('auth/profile')
@@ -104,19 +143,34 @@ export class ProfileController {
   ) {
     if (
       dto.nickname === undefined &&
+      dto.email === undefined &&
       dto.mobile === undefined &&
       dto.sex === undefined &&
-      dto.avatar === undefined
+      dto.avatar === undefined &&
+      dto.idType === undefined &&
+      dto.idNumber === undefined &&
+      dto.address === undefined
     ) {
       throw new BadRequestException('请至少提交一项要修改的资料');
     }
     const userId = authenticatedUserId(request.user);
     const credentials = await this.usersService.findLocalCredentials(userId);
     if (!credentials) throw new NotFoundException('当前账号不存在');
+
+    // 如果要改邮箱，必须带邮箱验证码
+    if (dto.email) {
+      if (!dto.emailCode) {
+        throw new BadRequestException('修改邮箱需要填写邮箱验证码');
+      }
+      await this.registration.verifyChangeEmailCode(dto.email, dto.emailCode);
+    }
+
+    // emailCode 不是数据库字段，不能传给 update
+    const { emailCode: _ignored, ...profileChanges } = dto;
     const profile = await this.usersService.updateProfile(
       userId,
       credentials.username,
-      dto,
+      profileChanges,
     );
     if (!profile) throw new NotFoundException('用户资料不存在');
     await this.helper.audit(request, 'info', 'profile_updated', userId);

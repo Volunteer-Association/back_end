@@ -269,6 +269,7 @@ import {
   adminApproveRecharge,
   adminListRecharges,
   adminRejectRecharge,
+  getPaymentsOptions,
   type AdminRechargeOrder,
 } from '@/api/modules/payments'
 import { formatDateTime } from '@/utils/utils'
@@ -281,20 +282,22 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+// 业务枚举由后端下发
+const paymentOptions = ref<{
+  rechargeStatuses: { value: string; label: string }[]
+  rechargeChannels: { value: string; label: string }[]
+}>({ rechargeStatuses: [], rechargeChannels: [] })
+
 function channelLabel(c: string) {
-  return { alipay: '支付宝', wechat: '微信', bank: '银行' }[c as 'alipay' | 'wechat' | 'bank']
+  return paymentOptions.value.rechargeChannels.find((x) => x.value === c)?.label ?? c
 }
 
 function statusLabel(s: string) {
-  return { pending: '待审核', approved: '已到账', rejected: '已驳回' }[
-    s as 'pending' | 'approved' | 'rejected'
-  ]
+  return paymentOptions.value.rechargeStatuses.find((x) => x.value === s)?.label ?? s
 }
 
 function tagType(s: string) {
-  return { pending: 'warning', approved: 'success', rejected: 'danger' }[
-    s as 'pending' | 'approved' | 'rejected'
-  ] as never
+  return ({ pending: 'warning', approved: 'success', rejected: 'danger' } as Record<string, string>)[s] ?? 'info'
 }
 
 async function reload() {
@@ -424,7 +427,14 @@ async function submitReview() {
   }
 }
 
-onMounted(() => void reload())
+onMounted(async () => {
+  try {
+    paymentOptions.value = await getPaymentsOptions()
+  } catch {
+    // 枚举拉取失败不阻塞
+  }
+  await reload()
+})
 </script>
 
 <style scoped>

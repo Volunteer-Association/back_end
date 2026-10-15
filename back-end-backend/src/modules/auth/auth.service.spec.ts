@@ -17,6 +17,7 @@ describe('AuthService', () => {
     nickname: 'Sample',
     avatar: null,
     role: 'user',
+    roles: [],
     status: 'active',
     sessionVersion: 0,
   } as UserEntity;
@@ -82,6 +83,8 @@ describe('AuthService', () => {
       nickname: 'Sample',
       avatar: null,
       role: 'user',
+      roles: [],
+      createdAt: null,
     });
     expect(usersService.updateLastLogin).toHaveBeenCalledWith(
       expect.objectContaining({ userId: '1234567890123456789' }),
@@ -90,8 +93,6 @@ describe('AuthService', () => {
     expect(jwtService.signAsync).toHaveBeenCalledWith(
       {
         sub: '1234567890123456789',
-        username: 'sample',
-        role: 'user',
         tokenType: 'access',
         sessionVersion: 1,
       },

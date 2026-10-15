@@ -5,6 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import {
@@ -279,6 +280,72 @@ export class PaymentsService {
     return { balanceCents: cents, balanceYuan: centsToYuan(cents) };
   }
 
+  // ===== 支付密码（类微信/支付宝：6 位数字，与登录密码独立）=====
+
+  /** 校验支付密码格式：必须是 6 位纯数字。 */
+  private assertPaymentPasswordFormat(paymentPassword: string): void {
+    if (!/^\d{6}$/.test(paymentPassword)) {
+      throw new BadRequestException('支付密码必须是 6 位数字');
+    }
+  }
+
+  /** 查询用户是否已设置支付密码（不返回哈希本身）。 */
+  async hasPaymentPassword(userId: string): Promise<{ set: boolean }> {
+    const profile = await this.profiles.findOne({
+      where: { userId },
+      select: { paymentPasswordHash: true },
+    });
+    return { set: Boolean(profile?.paymentPasswordHash) };
+  }
+
+  /** 设置支付密码（首次设置）。若已设置过，必须走 change 接口并验证旧密码。 */
+  async setupPaymentPassword(userId: string, paymentPassword: string): Promise<void> {
+    this.assertPaymentPasswordFormat(paymentPassword);
+    const profile = await this.profiles.findOne({ where: { userId } });
+    if (!profile) throw new NotFoundException('用户资料不存在');
+    if (profile.paymentPasswordHash) {
+      throw new ConflictException('已设置过支付密码，请走修改流程');
+    }
+    profile.paymentPasswordHash = await bcrypt.hash(paymentPassword, 10);
+    await this.profiles.save(profile);
+  }
+
+  /** 修改支付密码：需提供旧密码验证。 */
+  async changePaymentPassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    this.assertPaymentPasswordFormat(newPassword);
+    const profile = await this.profiles.findOne({ where: { userId } });
+    if (!profile?.paymentPasswordHash) {
+      throw new BadRequestException('尚未设置支付密码');
+    }
+    const ok = await bcrypt.compare(oldPassword, profile.paymentPasswordHash);
+    if (!ok) throw new BadRequestException('原支付密码错误');
+    profile.paymentPasswordHash = await bcrypt.hash(newPassword, 10);
+    await this.profiles.save(profile);
+  }
+
+  /**
+   * 校验支付密码。涉及余额变动的接口（支付账单、转账）在扣钱前调用。
+   * 未设置支付密码的用户会被引导先去设置。
+   */
+  async assertPaymentPassword(userId: string, paymentPassword: string): Promise<void> {
+    if (!paymentPassword) {
+      throw new BadRequestException('请输入支付密码');
+    }
+    const profile = await this.profiles.findOne({
+      where: { userId },
+      select: { paymentPasswordHash: true },
+    });
+    if (!profile?.paymentPasswordHash) {
+      throw new BadRequestException('尚未设置支付密码，请先在钱包页设置');
+    }
+    const ok = await bcrypt.compare(paymentPassword, profile.paymentPasswordHash);
+    if (!ok) throw new BadRequestException('支付密码错误');
+  }
+
   /** 申请线下充值。状态为 pending，等待管理员审核。 */
   async requestRecharge(userId: string, req: RechargeRequest): Promise<MyRechargeOrderView> {
     assertPositiveCents(req.amountCents, '充值');
@@ -543,10 +610,13 @@ export class PaymentsService {
     toAccount: string,
     amountCents: number,
     note?: string | null,
+    paymentPassword?: string,
   ) {
     // 按对方邮箱查出收款方；金额校验走统一入口（见文件顶部 MAX_TXN_CENTS）
     assertPositiveCents(amountCents, '转账');
     assertSingleLimit(amountCents, '转账');
+    // 转账涉及余额变动，必须先验证支付密码（类微信/支付宝）
+    await this.assertPaymentPassword(fromUserId, paymentPassword ?? '');
     const target = await this.profiles.findOne({
       where: { email: toAccount.toLowerCase() },
     });

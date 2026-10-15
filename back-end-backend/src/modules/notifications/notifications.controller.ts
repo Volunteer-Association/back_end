@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   Param,
   Post,
@@ -37,6 +38,23 @@ export class NotificationsController {
     });
   }
 
+  @Get('options')
+  @ApiOperation({ summary: '通知类型枚举（后端下发，前端不写死）' })
+  options() {
+    return {
+      types: [
+        { value: 'recharge_approved', label: '充值到账' },
+        { value: 'recharge_rejected', label: '充值驳回' },
+        { value: 'transfer_received', label: '转账到账' },
+        { value: 'transfer_sent', label: '转账转出' },
+        { value: 'balance_adjusted', label: '余额调整' },
+        { value: 'bill_paid', label: '账单支付' },
+        { value: 'bill_refunded', label: '账单退款' },
+        { value: 'system', label: '系统通知' },
+      ],
+    };
+  }
+
   @Get('unread-count')
   @ApiOperation({ summary: '我的未读通知数' })
   async unreadCount(@Req() req: Request & { user?: { sub: string } }) {
@@ -57,5 +75,22 @@ export class NotificationsController {
     @Param('id') id: string,
   ) {
     return this.notifications.markRead(req.user!.sub, id);
+  }
+
+  // 注意：静态路由 'read' 必须放在参数路由 ':id' 之前声明，
+  // 否则 DELETE /notifications/read 会被匹配成 :id='read'。
+  @Delete('read')
+  @ApiOperation({ summary: '清空所有已读通知（未读保留）' })
+  clearRead(@Req() req: Request & { user?: { sub: string } }) {
+    return this.notifications.clearRead(req.user!.sub);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: '删除单条通知' })
+  remove(
+    @Req() req: Request & { user?: { sub: string } },
+    @Param('id') id: string,
+  ) {
+    return this.notifications.deleteOne(req.user!.sub, id);
   }
 }

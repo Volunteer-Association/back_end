@@ -7,6 +7,21 @@
       </div>
       <div class="account">
         <NotificationBell />
+        <!-- 多角色切换：只在用户拥有多个角色时显示 -->
+        <el-select
+          v-if="availableRoles.length > 1"
+          v-model="currentRole"
+          size="small"
+          style="width: 140px"
+          @change="onRoleChange"
+        >
+          <el-option
+            v-for="r in availableRoles"
+            :key="r.value"
+            :label="r.label"
+            :value="r.value"
+          />
+        </el-select>
         <el-avatar
           class="account-avatar"
           :size="32"
@@ -35,7 +50,8 @@
             <template #title>首页</template>
           </el-menu-item>
 
-          <el-sub-menu index="finance">
+          <!-- 普通用户功能：只有当前角色是 user 时才显示 -->
+          <el-sub-menu v-if="currentRole === 'user'" index="finance">
             <template #title>
               <el-icon><Wallet /></el-icon>
               <span>财务管理</span>
@@ -44,7 +60,7 @@
             <el-menu-item index="/wallet">我的钱包</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="tools">
+          <el-sub-menu v-if="currentRole === 'user'" index="tools">
             <template #title>
               <el-icon><Tools /></el-icon>
               <span>系统工具</span>
@@ -54,12 +70,12 @@
           </el-sub-menu>
 
           <el-sub-menu
-            v-if="auth.user?.role === 'admin'"
+            v-if="currentRole === 'admin'"
             index="admin"
           >
             <template #title>
               <el-icon><Setting /></el-icon>
-              <span>管理后台</span>
+              <span>业务管理</span>
             </template>
             <el-menu-item index="/admin/logs">系统日志</el-menu-item>
             <el-menu-item index="/admin/dict">数据字典</el-menu-item>
@@ -67,7 +83,19 @@
             <el-menu-item index="/admin/reconcile">钱包对账</el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="others">
+          <!-- 超级管理员专属菜单：只做账号与角色管理，不做日常业务 -->
+          <el-sub-menu
+            v-if="currentRole === 'super_admin'"
+            index="super"
+          >
+            <template #title>
+              <el-icon><Lock /></el-icon>
+              <span>权限管理</span>
+            </template>
+            <el-menu-item index="/admin/users">用户管理</el-menu-item>
+          </el-sub-menu>
+
+          <el-sub-menu v-if="currentRole === 'user'" index="others">
             <template #title>
               <el-icon><More /></el-icon>
               <span>其他</span>
@@ -76,9 +104,11 @@
             <el-menu-item index="/three">3D 展示</el-menu-item>
             <el-menu-item index="/aidemo">AI 项目</el-menu-item>
             <el-menu-item index="/about">关于</el-menu-item>
-            <el-menu-item index="/profile">个人资料</el-menu-item>
-            <el-menu-item index="/account">账号绑定</el-menu-item>
           </el-sub-menu>
+
+          <!-- 个人资料/账号绑定：所有角色都能看 -->
+          <el-menu-item index="/profile">个人资料</el-menu-item>
+          <el-menu-item index="/account">账号绑定</el-menu-item>
         </el-menu>
 
         <!-- 左下角折叠按钮（蓝框位置） -->
@@ -112,7 +142,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, RouterView } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
@@ -120,11 +150,13 @@ import {
   Wallet,
   Tools,
   Setting,
+  Lock,
   More,
   Expand,
   Fold,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { getRoleOptions, type RoleOption } from '@/api/modules/auth'
 import NotificationBell from '@/components/NotificationBell.vue'
 
 const auth = useAuthStore()
@@ -136,6 +168,54 @@ const asideWidth = computed(() => (collapsed.value ? '64px' : '220px'))
 
 const activeMenu = computed(() => route.path)
 const currentTitle = computed(() => (route.meta.title as string) || '')
+
+/** 后端下发的角色列表（含 label 和 sortOrder），前端不写死。 */
+const allRoleOptions = ref<RoleOption[]>([])
+onMounted(async () => {
+  try {
+    const r = await getRoleOptions()
+    allRoleOptions.value = r.roles
+  } catch {
+    // 拉不到时用兜底空数组
+  }
+})
+
+/** 用户拥有的角色，按后端 sortOrder 排序（普通用户在前）。 */
+const availableRoles = computed(() => {
+  const roles = auth.user?.roles
+  const list = Array.isArray(roles) && roles.length ? roles : [auth.user?.role ?? 'user']
+  const optionMap = new Map(allRoleOptions.value.map((r) => [r.value, r]))
+  return list
+    .map((v) => optionMap.get(v) ?? { value: v, label: v, sortOrder: 99 })
+    .sort((a, b) => a.sortOrder - b.sortOrder)
+})
+
+/** 当前激活的角色：决定左侧菜单显示哪一组。localStorage 持久化。 */
+const STORAGE_KEY = 'active_role'
+const currentRole = ref<string>(
+  localStorage.getItem(STORAGE_KEY) || availableRoles.value[0]?.value || 'user',
+)
+
+// 登录用户变化时，如果当前选的角色不在他拥有的角色里，自动切回排序第一的角色
+watch(
+  () => [auth.user?.roles, allRoleOptions.value],
+  () => {
+    const owned = availableRoles.value.map((r) => r.value)
+    if (!owned.includes(currentRole.value)) {
+      currentRole.value = owned[0] ?? 'user'
+      localStorage.setItem(STORAGE_KEY, currentRole.value)
+    }
+  },
+  { immediate: true, deep: true },
+)
+
+/** 切换角色后：如果当前页面不属于新角色，跳回首页；持久化选择。 */
+function onRoleChange(r: string) {
+  currentRole.value = r
+  localStorage.setItem(STORAGE_KEY, r)
+  if (route.meta.admin && r !== 'admin') void router.replace({ name: 'home' })
+  if (route.meta.superAdmin && r !== 'super_admin') void router.replace({ name: 'home' })
+}
 
 async function signOut() {
   try {

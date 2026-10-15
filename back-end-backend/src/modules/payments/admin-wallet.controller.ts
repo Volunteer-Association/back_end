@@ -146,8 +146,8 @@ export class AdminWalletController {
     return result;
   }
 
-  private assertAdmin(req: Request & { user?: Record<string, unknown> }) {
-    if (!req.user || req.user.role !== 'admin') {
+  private assertAdmin(req: Request & { user?: { roles?: string[] } }) {
+    if (!req.user || !req.user.roles?.includes('admin')) {
       throw new ForbiddenException('需要管理员权限');
     }
   }

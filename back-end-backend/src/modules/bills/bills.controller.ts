@@ -129,12 +129,20 @@ export class BillsController {
   @Post(':id/pay')
   @ApiOperation({
     summary: '用账户余额支付支出账单',
-    description: '扣款失败（余额不足）会返回 400。',
+    description: '扣款失败（余额不足/支付密码错误）会返回 400。',
   })
   @ApiResponse({ status: 200, description: '支付成功，返回更新后的账单。' })
-  async pay(@Req() request: AuthenticatedRequest, @Param('id') id: string) {
+  async pay(
+    @Req() request: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { paymentPassword?: string },
+  ) {
     const userId = this.userId(request);
-    const bill = await this.billsService.payWithBalance(userId, id);
+    const bill = await this.billsService.payWithBalance(
+      userId,
+      id,
+      body?.paymentPassword,
+    );
     await this.logging.audit({
       level: 'info',
       category: 'event',

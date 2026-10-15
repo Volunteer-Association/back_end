@@ -14,7 +14,7 @@ import type { Relation } from 'typeorm';
 import { RoleEntity } from './role.entity.js';
 import { UserProfileEntity } from './user-profile.entity.js';
 
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'super_admin' | 'admin' | 'user';
 export type UserStatus = 'active' | 'inactive' | 'banned';
 
 export function mapEnabledStatus(enabled: unknown): UserStatus {
@@ -199,7 +199,15 @@ export class UserEntity {
     return this.profile?.avatar ?? null;
   }
 
+  /**
+   * 实时角色：优先 super_admin > admin > user。
+   * - super_admin：最高权限，但只用于用户/角色管理，不能跑日常业务
+   * - admin：日常业务管理员（充值审核、对账、字典等）
+   * - user：普通用户
+   */
   get role(): UserRole {
-    return this.roles?.some((role) => role.key === 'admin') ? 'admin' : 'user';
+    if (this.roles?.some((role) => role.key === 'super_admin')) return 'super_admin';
+    if (this.roles?.some((role) => role.key === 'admin')) return 'admin';
+    return 'user';
   }
 }

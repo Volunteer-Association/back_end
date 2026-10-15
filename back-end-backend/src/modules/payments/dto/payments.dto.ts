@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -124,4 +125,28 @@ export class TransferDto {
   @IsString()
   @MaxLength(200)
   note?: string | null;
+
+  @ApiProperty({ example: '123456', description: '6 位支付密码' })
+  @IsString()
+  paymentPassword: string;
+}
+
+/** 设置支付密码（首次）。 */
+export class SetupPaymentPasswordDto {
+  @ApiProperty({ example: '123456', description: '6 位数字支付密码' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: '支付密码必须是 6 位数字' })
+  paymentPassword: string;
+}
+
+/** 修改支付密码。 */
+export class ChangePaymentPasswordDto {
+  @ApiProperty({ example: '123456', description: '原支付密码' })
+  @IsString()
+  oldPassword: string;
+
+  @ApiProperty({ example: '654321', description: '新支付密码（6 位数字）' })
+  @IsString()
+  @Matches(/^\d{6}$/, { message: '新支付密码必须是 6 位数字' })
+  newPassword: string;
 }

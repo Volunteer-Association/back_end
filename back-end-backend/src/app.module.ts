@@ -16,6 +16,7 @@ import { BillsModule } from './modules/bills/bills.module.js';
 import { DictModule } from './modules/dict/dict.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
+import { AdminUsersModule } from './modules/admin-users/admin-users.module.js';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     DictModule,
     PaymentsModule,
     NotificationsModule,
+    AdminUsersModule,
   ],
 })
 export class AppModule {}

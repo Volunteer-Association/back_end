@@ -54,12 +54,47 @@ export class UserProfileEntity {
   mobile: string | null;
 
   @Column({
+    name: 'payment_password_hash',
+    type: 'varchar',
+    length: 100,
+    nullable: true,
+    comment: '支付密码哈希（bcrypt）。为空表示尚未设置支付密码；'
+      + '支付/转账等涉及余额变动的操作必须校验。支付密码与登录密码独立。',
+  })
+  paymentPasswordHash: string | null;
+
+  @Column({
     type: 'tinyint',
     nullable: true,
     default: 2,
     comment: '用户性别：0女、1男、2保密',
   })
   sex: number | null;
+
+  @Column({
+    name: 'id_type',
+    type: 'tinyint',
+    nullable: true,
+    comment: '证件类型：1身份证、2护照、3港澳通行证、4台胞证、9其他',
+  })
+  idType: number | null;
+
+  @Column({
+    name: 'id_number',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: '证件号码',
+  })
+  idNumber: string | null;
+
+  @Column({
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    comment: '联系地址',
+  })
+  address: string | null;
 
   @Column({
     type: 'varchar',

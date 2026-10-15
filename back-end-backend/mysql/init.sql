@@ -36,7 +36,11 @@ CREATE TABLE IF NOT EXISTS `users` (
   `nickname` VARCHAR(60) NULL COMMENT '用户昵称',
   `avatar` VARCHAR(255) NULL COMMENT '用户头像地址',
   `mobile` VARCHAR(11) NULL COMMENT '手机号',
+  `payment_password_hash` VARCHAR(100) NULL COMMENT '支付密码哈希（bcrypt）；为空表示未设置。支付/转账时校验，与登录密码独立',
   `sex` TINYINT NULL DEFAULT 2 COMMENT '用户性别：0女、1男、2保密',
+  `id_type` TINYINT NULL COMMENT '证件类型：1身份证、2护照、3港澳通行证、4台胞证、9其他',
+  `id_number` VARCHAR(50) NULL COMMENT '证件号码',
+  `address` VARCHAR(255) NULL COMMENT '联系地址',
   `creater` VARCHAR(50) NOT NULL DEFAULT '系统' COMMENT '创建人',
   `creater_id` VARCHAR(50) NOT NULL DEFAULT 'system' COMMENT '创建人ID',
   `operator` VARCHAR(50) NULL DEFAULT '系统' COMMENT '最后操作人',
@@ -96,7 +100,9 @@ CREATE TABLE IF NOT EXISTS `refresh_tokens` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '雪花算法用户id',
   `token_hash` CHAR(64) NOT NULL COMMENT 'Refresh Token哈希',
-  `expires_at` DATETIME NOT NULL COMMENT '过期时间',
+  `expires_at` DATETIME NOT NULL COMMENT '滑动过期时间',
+  `session_version` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '签发时的会话版本号，rotate 时校验是否被撤销',
+  `absolute_expires_at` DATETIME NOT NULL COMMENT '会话绝对过期时间，rotate 不延长，超时必须重登',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_refresh_tokens_token_hash` (`token_hash`),
@@ -301,9 +307,11 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 -- ============================================================
 
 -- 默认角色
+-- 1=普通用户；2=日常业务管理员（充值审核/对账/字典/日志）；3=超级管理员（仅用户与角色管理，不跑日常业务）
 INSERT IGNORE INTO `roles` (`id`, `role_key`, `name`, `description`) VALUES
 (1, 'user', '普通用户', '默认注册用户角色'),
-(2, 'admin', '管理员', '系统管理员角色');
+(2, 'admin', '业务管理员', '负责日常业务：充值审核、对账、字典维护、日志查看'),
+(3, 'super_admin', '超级管理员', '拥有最高权限，仅用于用户管理与角色分配，不参与日常业务操作');
 
 -- 账单分类字典数据
 INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `sort_order`, `enabled`) VALUES

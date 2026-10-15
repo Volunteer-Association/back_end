@@ -55,3 +55,20 @@ export function markNotificationRead(id: string) {
 export function markAllNotificationsRead() {
   return request.post<{ updated: number }>('/notifications/read-all')
 }
+
+/** 删除单条通知。 */
+export function deleteNotification(id: string) {
+  return request.delete<{ success: true }>(`/notifications/${encodeURIComponent(id)}`)
+}
+
+/** 清空所有已读通知（未读保留）。 */
+export function clearReadNotifications() {
+  return request.delete<{ deleted: number }>('/notifications/read')
+}
+
+/** 通知类型枚举（后端下发）。 */
+export function getNotificationTypes() {
+  return request.get<{ types: { value: string; label: string }[] }>(
+    '/notifications/options',
+  )
+}

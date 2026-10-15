@@ -91,13 +91,8 @@ export class AdminLogsController {
     @Query('level') levelValue?: string,
     @Query('category') categoryValue?: string,
   ) {
-    const user = request.user;
-    if (
-      !user ||
-      typeof user !== 'object' ||
-      !('role' in user) ||
-      user.role !== 'admin'
-    ) {
+    const user = request.user as { roles?: string[] } | undefined;
+    if (!user || !user.roles?.includes('admin')) {
       throw new ForbiddenException('需要管理员权限');
     }
     const page = parsePageValue(pageValue, 1, 1_000_000);

@@ -272,6 +272,43 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 支付确认弹窗：显示应付金额 + 6 位支付密码（可切换可见性） -->
+    <el-dialog
+      v-model="payDialogVisible"
+      title="余额支付"
+      width="min(420px, calc(100vw - 32px))"
+      destroy-on-close
+    >
+      <div v-if="payingBill" class="pay-summary">
+        <div class="pay-row">
+          <span>收款</span>
+          <strong>{{ payingBill.category }}</strong>
+        </div>
+        <div class="pay-row">
+          <span>支付金额</span>
+          <strong class="pay-amount">¥{{ formatAmount(payingBill.amount) }}</strong>
+        </div>
+      </div>
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item label="支付密码">
+          <el-input
+            v-model="payPassword"
+            type="password"
+            show-password
+            maxlength="6"
+            placeholder="请输入 6 位支付密码"
+            inputmode="numeric"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="payDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="paying" @click="confirmPay">
+          确认支付
+        </el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -334,6 +371,11 @@ function currentMonthRange(): [string, string] {
 
 const loading = ref(false)
 const saving = ref(false)
+// 支付弹窗状态
+const payDialogVisible = ref(false)
+const payPassword = ref('')
+const paying = ref(false)
+const payingBill = ref<Bill | null>(null)
 const items = ref<Bill[]>([])
 const summary = ref({ income: '0.00', expense: '0.00', balance: '0.00' })
 const total = ref(0)
@@ -531,24 +573,30 @@ async function confirmDelete(bill: Bill) {
   }
 }
 
-// ===== 余额支付 =====
-async function payNow(bill: Bill) {
-  try {
-    await ElMessageBox.confirm(
-      `将从账户余额扣除 ¥${formatAmount(bill.amount)} 支付该账单，确认？`,
-      '余额支付',
-      { confirmButtonText: '确认支付', cancelButtonText: '取消', type: 'info' },
-    )
-  } catch {
+// ===== 余额支付（弹窗输入支付密码） =====
+function payNow(bill: Bill) {
+  payingBill.value = bill
+  payPassword.value = ''
+  payDialogVisible.value = true
+}
+
+async function confirmPay() {
+  if (!payingBill.value) return
+  if (!/^\d{6}$/.test(payPassword.value)) {
+    ElMessage.error('支付密码必须是 6 位数字')
     return
   }
+  paying.value = true
   try {
-    const updated = await payBill(bill.id)
+    const updated = await payBill(payingBill.value.id, payPassword.value)
     ElMessage.success('支付成功')
-    const idx = items.value.findIndex((b) => b.id === bill.id)
+    payDialogVisible.value = false
+    const idx = items.value.findIndex((b) => b.id === payingBill.value!.id)
     if (idx >= 0) items.value[idx] = updated
   } catch (e: unknown) {
     ElMessage.error(errorMessage(e, '支付失败，请稍后重试'))
+  } finally {
+    paying.value = false
   }
 }
 
@@ -678,6 +726,29 @@ onMounted(async () => {
   font-size: 12px;
   color: #b88230;
   line-height: 1.5;
+}
+
+.pay-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: #f6f8fb;
+  border-radius: 8px;
+}
+
+.pay-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: #6b778c;
+  font-size: 14px;
+}
+
+.pay-amount {
+  color: #e05b5b;
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
 }
 
 .bill-item {

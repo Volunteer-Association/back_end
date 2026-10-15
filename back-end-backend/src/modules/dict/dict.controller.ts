@@ -93,9 +93,9 @@ export class DictController {
     return this.dict.remove(id);
   }
 
-  private assertAdmin(request: Request & { user?: Record<string, unknown> }) {
+  private assertAdmin(request: Request & { user?: { roles?: string[] } }) {
     const user = request.user;
-    if (!user || user.role !== 'admin') {
+    if (!user || !user.roles?.includes('admin')) {
       throw new ForbiddenException('需要管理员权限');
     }
   }

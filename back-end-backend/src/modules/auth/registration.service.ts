@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   HttpException,
   Injectable,
@@ -241,5 +242,112 @@ export class RegistrationService {
     return createHmac('sha256', secret)
       .update(`registration:${email}:${code}`)
       .digest('hex');
+  }
+
+  /** 修改邮箱时用的哈希前缀，和注册码区分，防止注册码被拿来改邮箱。 */
+  private changeEmailHash(email: string, code: string): string {
+    const secret = this.config.getOrThrow<string>('app.jwt.secret');
+    return createHmac('sha256', secret)
+      .update(`change-email:${email}:${code}`)
+      .digest('hex');
+  }
+
+  /**
+   * 发送修改邮箱验证码到新邮箱。
+   * 新邮箱不能已被其他账号占用。
+   * 返回冷却秒数。
+   */
+  async sendChangeEmailCode(emailInput: string, currentUserId: string): Promise<number> {
+    this.mailer.ensureConfigured();
+    const email = emailInput.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new BadRequestException('邮箱格式不正确');
+    }
+    const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const now = new Date();
+    const cooldownSeconds =
+      this.config.getOrThrow<number>('app.email.verificationCooldown');
+    const expiresMs = this.config.getOrThrow<number>('app.email.expires');
+    const expiresAt = new Date(now.getTime() + expiresMs);
+    const codeHash = this.changeEmailHash(email, code);
+
+    const maySend = await this.dataSource.transaction(async (manager) => {
+      const profiles = manager.getRepository(UserProfileEntity);
+      // 新邮箱不能已被别人占用
+      const existing = await profiles.findOne({ where: { email } });
+      if (existing && existing.userId !== currentUserId) {
+        throw new ConflictException('该邮箱已被其他账号使用');
+      }
+      // 新邮箱和当前邮箱一样，没必要发码
+      if (existing && existing.userId === currentUserId) {
+        throw new BadRequestException('新邮箱和当前邮箱相同，无需修改');
+      }
+
+      const verifications = manager.getRepository(EmailVerificationEntity);
+      const current = await verifications
+        .createQueryBuilder('verification')
+        .where('verification.email = :email', { email })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (
+        current &&
+        now.getTime() - current.lastSentAt.getTime() < cooldownSeconds * 1000
+      ) {
+        throw new HttpException(`请等待 ${cooldownSeconds} 秒后再获取验证码`, 429);
+      }
+      await verifications.save(
+        verifications.create({
+          ...(current ? { id: current.id } : {}),
+          email,
+          codeHash,
+          expiresAt,
+          lastSentAt: now,
+          attempts: 0,
+        }),
+      );
+      return true;
+    });
+
+    if (!maySend) return cooldownSeconds;
+
+    // 查当前用户名，写进邮件
+    const me = await this.dataSource
+      .getRepository(UserProfileEntity)
+      .findOne({ where: { userId: currentUserId } });
+    const displayName = me?.nickname || me?.email || '用户';
+
+    try {
+      await this.mailer.sendChangeEmailCode(email, code, expiresMs, displayName);
+    } catch (error) {
+      await this.dataSource
+        .getRepository(EmailVerificationEntity)
+        .delete({ email, codeHash });
+      throw error;
+    }
+    return cooldownSeconds;
+  }
+
+  /** 校验修改邮箱验证码，成功后删除验证码（一次性）。 */
+  async verifyChangeEmailCode(email: string, code: string): Promise<void> {
+    const normalized = email.trim().toLowerCase();
+    await this.dataSource.transaction(async (manager) => {
+      const verifications = manager.getRepository(EmailVerificationEntity);
+      const row = await verifications
+        .createQueryBuilder('verification')
+        .where('verification.email = :email', { email: normalized })
+        .setLock('pessimistic_write')
+        .getOne();
+      if (!row || row.expiresAt <= new Date() || row.attempts >= 5) {
+        throw new BadRequestException('验证码已过期，请重新获取');
+      }
+      const expected = Buffer.from(row.codeHash, 'hex');
+      const received = Buffer.from(this.changeEmailHash(normalized, code), 'hex');
+      if (!timingSafeEqual(expected, received)) {
+        row.attempts += 1;
+        await verifications.save(row);
+        throw new BadRequestException('验证码错误');
+      }
+      await verifications.delete({ id: row.id });
+    });
   }
 }
