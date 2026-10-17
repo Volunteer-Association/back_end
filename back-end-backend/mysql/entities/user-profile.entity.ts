@@ -99,11 +99,45 @@ export class UserProfileEntity {
 
   @Column({
     type: 'varchar',
-    length: 255,
+    length: 50,
     nullable: true,
     comment: '联系地址',
   })
   address: string | null;
+
+  @Column({
+    name: 'real_name',
+    type: 'varchar',
+    length: 50,
+    nullable: true,
+    comment: '实名认证真实姓名',
+  })
+  realName: string | null;
+
+  @Column({
+    name: 'verify_status',
+    type: 'tinyint',
+    default: 0,
+    comment: '实名审核状态：0未提交、1审核中、2已通过、3已拒绝',
+  })
+  verifyStatus: number;
+
+  @Column({
+    name: 'verified_at',
+    type: 'datetime',
+    nullable: true,
+    comment: '实名通过时间',
+  })
+  verifiedAt: Date | null;
+
+  @Column({
+    name: 'verify_reject_reason',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+    comment: '审核拒绝原因',
+  })
+  verifyRejectReason: string | null;
 
   @Column({
     type: 'varchar',

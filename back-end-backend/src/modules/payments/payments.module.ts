@@ -11,11 +11,20 @@ import {
   UserBalanceEntity,
   UserEntity,
   UserProfileEntity,
+  BankCardEntity,
+  WithdrawalEntity,
 } from '../../../mysql/entities/index.js';
 import { PaymentsController } from './payments.controller.js';
 import { AdminPaymentsController } from './admin-payments.controller.js';
 import { AdminWalletController } from './admin-wallet.controller.js';
 import { PaymentsService } from './payments.service.js';
+import { WithdrawController } from './withdraw.controller.js';
+import { AdminWithdrawController } from './admin-withdraw.controller.js';
+import { AdminRiskController } from './admin-risk.controller.js';
+import { WithdrawService } from './withdraw.service.js';
+import { RedPacketController } from './red-packet.controller.js';
+import { RedPacketService } from './red-packet.service.js';
+import { RiskService } from './risk.service.js';
 import { CommonModule } from '../common/common.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
@@ -33,10 +42,12 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
       BalanceTransactionEntity,
       UserProfileEntity,
       UserEntity,
+      BankCardEntity,
+      WithdrawalEntity,
     ]),
   ],
-  controllers: [PaymentsController, AdminPaymentsController, AdminWalletController],
-  providers: [PaymentsService, AuthGuard],
+  controllers: [PaymentsController, AdminPaymentsController, AdminWalletController, WithdrawController, AdminWithdrawController, RedPacketController, AdminRiskController],
+  providers: [PaymentsService, AuthGuard, WithdrawService, RedPacketService, RiskService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

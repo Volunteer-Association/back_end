@@ -22,6 +22,10 @@ const TXN_TYPE_CODES: Record<BalanceTxnType, string> = {
   consume: '30',
   refund: '40',
   adjust: '50',
+  withdraw_out: '60',
+  withdraw_refund: '61',
+  red_packet_out: '70',
+  red_packet_in: '71',
 };
 
 const SEQ_MOD = 1_000_000;
@@ -96,5 +100,11 @@ export class PaymentNoGenerator {
   nextBillNo(): string {
     const { dateTime } = timeParts(new Date());
     return bizNo('BILL', dateTime, this.nextSeq(), Math.floor(Math.random() * 10000));
+  }
+
+  /** 生成提现实业务单号：TX + 12 位时间 + 6 位序列 + 4 位随机，共 24 位。 */
+  nextWithdrawNo(): string {
+    const { dateTime } = timeParts(new Date());
+    return bizNo('TX', dateTime, this.nextSeq(), Math.floor(Math.random() * 10000));
   }
 }

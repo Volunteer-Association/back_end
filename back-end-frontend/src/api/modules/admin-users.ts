@@ -63,7 +63,7 @@ export function setUserStatus(userId: string, status: UserStatus) {
   return request.patch<AdminUser>(`/admin/users/${encodeURIComponent(userId)}/status`, { status })
 }
 
-export function assignUserRoles(userId: string, roleKeys: RoleKey[]) {
+export function assignUserRoles(userId: string, roleKeys: string[]) {
   return request.patch<AdminUser>(`/admin/users/${encodeURIComponent(userId)}/roles`, { roleKeys })
 }
 
@@ -72,4 +72,18 @@ export function resetUserPassword(userId: string, newPassword: string) {
     `/admin/users/${encodeURIComponent(userId)}/reset-password`,
     { newPassword },
   )
+}
+
+// ===== 角色管理（超管） =====
+export function listAllRoles() {
+  return request.get<{ id: number; key: string; name: string; description: string }[]>('/admin/users/roles/list')
+}
+export function createRole(data: { key: string; name: string; description?: string }) {
+  return request.post('/admin/users/roles', data)
+}
+export function deleteRole(key: string) {
+  return request.delete(`/admin/users/roles/${key}`)
+}
+export function updateRole(key: string, data: { name?: string; description?: string }) {
+  return request.put(`/admin/users/roles/${key}`, data)
 }

@@ -23,6 +23,7 @@ import {
   SnowflakeIdGenerator,
 } from '../../../mysql/snowflake-id.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
+import { RiskService } from './risk.service.js';
 
 export interface RechargeRequest {
   amountCents: number;
@@ -168,6 +169,7 @@ export class PaymentsService {
     @Inject(SNOWFLAKE_ID_GENERATOR)
     private readonly idGenerator: SnowflakeIdGenerator,
     private readonly paymentNo: PaymentNoGenerator,
+    private readonly risk: RiskService,
   ) {}
 
   // ===== 用户端 =====
@@ -365,6 +367,28 @@ export class PaymentsService {
     });
     const saved = await this.recharges.save(order);
     return this.toMyRechargeView(saved);
+  }
+
+  /** 月度账单：按月汇总收支 */
+  async monthlySummary(userId: string, year?: number) {
+    const y = year ?? new Date().getFullYear();
+    const rows = await this.dataSource.query(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m') AS month,
+              SUM(CASE WHEN amount_cents > 0 THEN amount_cents ELSE 0 END) AS income_cents,
+              SUM(CASE WHEN amount_cents < 0 THEN -amount_cents ELSE 0 END) AS expense_cents,
+              COUNT(*) AS cnt
+       FROM balance_transactions
+       WHERE user_id = ? AND YEAR(created_at) = ?
+       GROUP BY DATE_FORMAT(created_at, '%Y-%m')
+       ORDER BY month DESC`,
+      [userId, y],
+    );
+    return (rows as any[]).map((r) => ({
+      month: r.month,
+      incomeYuan: (Number(r.income_cents) / 100).toFixed(2),
+      expenseYuan: (Number(r.expense_cents) / 100).toFixed(2),
+      count: Number(r.cnt),
+    }));
   }
 
   async listMyRecharges(userId: string): Promise<MyRechargeOrderView[]> {
@@ -615,6 +639,13 @@ export class PaymentsService {
     // 按对方邮箱查出收款方；金额校验走统一入口（见文件顶部 MAX_TXN_CENTS）
     assertPositiveCents(amountCents, '转账');
     assertSingleLimit(amountCents, '转账');
+
+    // 风控：单笔/日累计
+    const singleMax = (await this.risk.getNum('transfer_single_max_yuan', 10000)) * 100;
+    if (amountCents > singleMax) throw new BadRequestException(`单笔转账不能超过 ${(singleMax / 100).toFixed(0)} 元`);
+    const dailyMax = (await this.risk.getNum('transfer_daily_max_yuan', 50000)) * 100;
+    const todayOut = await this.risk.todayOutflow(fromUserId, ['transfer_out']);
+    if (todayOut + amountCents > dailyMax) throw new BadRequestException(`今日转账累计已达上限（${(dailyMax / 100).toFixed(0)} 元）`);
     // 转账涉及余额变动，必须先验证支付密码（类微信/支付宝）
     await this.assertPaymentPassword(fromUserId, paymentPassword ?? '');
     const target = await this.profiles.findOne({
@@ -1047,7 +1078,7 @@ export class PaymentsService {
       return { cents, big: BigInt(cents) };
     };
 
-    const [recharge, consume, transferOut, transferIn, refund, adjust] =
+    const [recharge, consume, transferOut, transferIn, refund, adjust, withdrawOut, withdrawRefund] =
       await Promise.all([
         sumByType('recharge'),
         sumByType('consume'),
@@ -1055,9 +1086,12 @@ export class PaymentsService {
         sumByType('transfer_in'),
         sumByType('refund'),
         sumByType('adjust'),
+        sumByType('withdraw_out'),
+        sumByType('withdraw_refund'),
       ]);
     const ledgerSum =
-      recharge.big + consume.big + transferOut.big + transferIn.big + refund.big + adjust.big;
+      recharge.big + consume.big + transferOut.big + transferIn.big + refund.big + adjust.big
+      + withdrawOut.big + withdrawRefund.big;
     const diff = totalBalanceCents - ledgerSum;
 
     return {
@@ -1077,6 +1111,8 @@ export class PaymentsService {
         transferInSumCents: transferIn.cents,
         refundSumCents: refund.cents,
         adjustSumCents: adjust.cents,
+        withdrawOutSumCents: withdrawOut.cents,
+        withdrawRefundSumCents: withdrawRefund.cents,
       },
       userCount: Number(countRow?.c ?? 0),
     };

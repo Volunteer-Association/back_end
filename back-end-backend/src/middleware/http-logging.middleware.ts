@@ -22,6 +22,10 @@ export class HttpLoggingMiddleware implements NestMiddleware {
     const startedAt = Date.now();
     response.setHeader('X-Request-Id', requestId);
 
+    // 高频轮询接口不打控制台日志（仍入库）
+    const silentPaths = ['/admin/system/metrics', '/notifications/unread-count'];
+    const isSilent = silentPaths.some((p) => request.path.startsWith(p));
+
     response.on('finish', () => {
       // 请求日志按响应状态定级；成功响应也入库，便于管理员按 http 分类完整检索。
       const level: LogLevel =
@@ -43,16 +47,20 @@ export class HttpLoggingMiddleware implements NestMiddleware {
         timestamp: new Date().toISOString(),
       };
       const line = JSON.stringify(entry);
+      if (!isSilent) {
+        if (entry.level === 'error') {
+          this.logger.error(line);
+        } else if (entry.level === 'warn') {
+          this.logger.warn(line);
+        } else {
+          this.logger.log(line);
+        }
+      }
       if (entry.level === 'error') {
-        this.logger.error(line);
         void this.writeFileLog(
           `error-${entry.timestamp.slice(0, 10)}.log`,
           line,
         );
-      } else if (entry.level === 'warn') {
-        this.logger.warn(line);
-      } else {
-        this.logger.log(line);
       }
       const requestUser = (request as Request & { user?: unknown }).user;
       // 中间件在 Guard 前注册，user 可能尚未写入；只在认证载荷可用时关联用户。

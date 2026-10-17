@@ -29,7 +29,11 @@ export type BalanceTxnType =
   | 'refund'        // 退款
   | 'transfer_out'  // 转账出款
   | 'transfer_in'   // 转账收款
-  | 'adjust';       // 管理员手工调整
+  | 'adjust'        // 管理员手工调整
+  | 'withdraw_out'  // 提现扣款
+  | 'withdraw_refund' // 提现被拒绝退回
+  | 'red_packet_out' // 发红包
+  | 'red_packet_in';  // 收红包
 
 @Entity({ name: 'balance_transactions' })
 @Index('idx_txn_user_created', ['userId', 'createdAt'])

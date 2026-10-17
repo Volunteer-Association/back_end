@@ -66,17 +66,18 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="角色" min-width="160">
+        <el-table-column label="角色" min-width="200">
           <template #default="{ row }">
-            <el-tag
-              v-for="r in row.roleKeys"
-              :key="r"
-              :type="roleTag(r)"
-              size="small"
-              style="margin-right: 4px"
-            >
-              {{ roleLabel(r) }}
-            </el-tag>
+            <div style="display: flex; flex-wrap: wrap; gap: 4px; max-height: 60px; overflow-y: auto">
+              <el-tag
+                v-for="r in row.roleKeys"
+                :key="r"
+                :type="roleTag(r)"
+                size="small"
+              >
+                {{ roleLabel(r) }}
+              </el-tag>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="最后登录" width="170">
@@ -182,17 +183,19 @@
         title="修改角色后该用户会被强制下线，需要重新登录。不能修改自己的角色。"
         style="margin-bottom: 12px"
       />
-      <el-checkbox-group v-model="rolesForm">
-        <el-checkbox
-          v-for="r in options.roles"
-          :key="r.value"
-          :value="r.value"
-          style="display: block; margin-bottom: 8px"
-        >
-          {{ r.label }}
-          <div class="muted">{{ r.description }}</div>
-        </el-checkbox>
-      </el-checkbox-group>
+      <div style="max-height: 400px; overflow-y: auto; padding-right: 8px">
+        <el-checkbox-group v-model="rolesForm">
+          <el-checkbox
+            v-for="r in options.roles"
+            :key="r.value"
+            :value="r.value"
+            style="display: block; margin-bottom: 8px"
+          >
+            {{ r.label }}
+            <div class="muted">{{ r.description }}</div>
+          </el-checkbox>
+        </el-checkbox-group>
+      </div>
       <template #footer>
         <el-button @click="rolesVisible = false">取消</el-button>
         <el-button type="primary" :loading="savingRoles" @click="submitRoles">保存</el-button>
@@ -369,16 +372,14 @@ async function submitStatus() {
 const rolesVisible = ref(false)
 const savingRoles = ref(false)
 const editingUser = ref<AdminUser | null>(null)
-const rolesForm = ref<RoleKey[]>([])
+const rolesForm = ref<string[]>([])
 function onAssignRoles(row: AdminUser) {
   if (row.userId === auth.user?.id) {
     ElMessage.warning('不能修改自己的角色')
     return
   }
   editingUser.value = row
-  rolesForm.value = row.roleKeys.filter((r): r is RoleKey =>
-    ['user', 'admin', 'super_admin'].includes(r),
-  )
+  rolesForm.value = [...row.roleKeys]
   rolesVisible.value = true
 }
 async function submitRoles() {

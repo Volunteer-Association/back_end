@@ -11,6 +11,7 @@ import {
   Get,
   Patch,
 } from '@nestjs/common';
+import { DataSource } from 'typeorm';
 import type { Request, Response } from 'express';
 import {
   ApiBearerAuth,
@@ -60,6 +61,7 @@ export class AuthController {
     private readonly usersService: UsersService,
     private readonly loginAttempts: LoginAttemptService,
     private readonly helper: AuthResponseHelper,
+    private readonly dataSource: DataSource,
   ) {}
 
   @Post('auth/register/email-code')
@@ -184,15 +186,11 @@ export class AuthController {
   @Get('auth/role-options')
   @ApiOperation({ summary: '系统所有角色枚举（按 sortOrder 排序，供前端角色切换下拉用）' })
   @UseGuards(AuthGuard)
-  roleOptions() {
-    // 角色列表硬编码在后端，后续加部门/新角色只改这里，前端不写死
-    return {
-      roles: [
-        { value: 'user', label: '普通用户', description: '个人账单、钱包、通知', sortOrder: 1 },
-        { value: 'admin', label: '业务管理员', description: '充值审核、对账、字典、日志', sortOrder: 2 },
-        { value: 'super_admin', label: '超级管理员', description: '用户与角色管理，不参与日常业务', sortOrder: 3 },
-      ],
-    };
+  async roleOptions() {
+    const rows = await this.dataSource.query(
+      `SELECT role_key as value, name as label, description, sort_order FROM roles ORDER BY sort_order ASC, id ASC`,
+    );
+    return { roles: rows };
   }
 
   @Post('auth/refresh')

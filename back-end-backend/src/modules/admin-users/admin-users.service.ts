@@ -77,18 +77,15 @@ export class AdminUsersService {
   ) {}
 
   /** 下拉选项：状态和角色枚举由后端统一定义，前端不写死。 */
-  options() {
+  async options() {
+    const all = await this.roles.find({ order: { id: 'ASC' } });
     return {
       statuses: [
         { value: 'active', label: '正常', description: '账号可正常登录和使用' },
         { value: 'inactive', label: '停用', description: '暂时锁定，用户无法登录，可恢复' },
         { value: 'banned', label: '封禁', description: '永久封禁，需要超管手动解除' },
       ],
-      roles: [
-        { value: 'user', label: '普通用户', description: '默认注册用户，可使用账单/钱包功能' },
-        { value: 'admin', label: '业务管理员', description: '充值审核、对账、字典维护、日志查看' },
-        { value: 'super_admin', label: '超级管理员', description: '最高权限，仅用于用户与角色管理，不参与日常业务' },
-      ],
+      roles: all.map((r) => ({ value: r.key, label: r.name, description: r.description || '' })),
     };
   }
 
@@ -173,9 +170,7 @@ export class AdminUsersService {
     if (input.password.length < 8 || input.password.length > 72) {
       throw new BadRequestException('密码长度需在 8-72 位之间');
     }
-    const roleKeys = (input.roleKeys ?? ['user']).filter((k) =>
-      (ALLOWED_ROLE_KEYS as readonly string[]).includes(k),
-    );
+    const roleKeys = (input.roleKeys ?? ['user']).filter((k) => typeof k === 'string' && k.length > 0);
     const roleEntities = await this.roles.findBy(
       roleKeys.length ? roleKeys.map((key) => ({ key })) : { key: 'user' },
     );
@@ -246,9 +241,7 @@ export class AdminUsersService {
     if (targetUserId === operatorId) {
       throw new BadRequestException('不能修改自己的角色，避免误操作丢失权限');
     }
-    const cleanKeys = (roleKeys ?? []).filter((k) =>
-      (ALLOWED_ROLE_KEYS as readonly string[]).includes(k),
-    );
+    const cleanKeys = (roleKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
     if (!cleanKeys.length) {
       throw new BadRequestException('至少要分配一个角色');
     }
@@ -306,6 +299,38 @@ export class AdminUsersService {
         .where('user_id = :userId', { userId: targetUserId })
         .execute();
     });
+    return { success: true };
+  }
+
+  async listAllRoles() {
+    const rows = await this.roles.find({ order: { id: 'ASC' } });
+    return rows.map((r) => ({ id: r.id, key: r.key, name: r.name, description: r.description }));
+  }
+
+  async createRole(key: string, name: string, description?: string) {
+    if (!key || !name) throw new BadRequestException('角色 key 和名称不能为空');
+    if (!/^[a-z0-9_]+$/.test(key)) throw new BadRequestException('角色 key 只能用小写字母、数字、下划线');
+    const exists = await this.roles.findOne({ where: { key } });
+    if (exists) throw new ConflictException('角色 key 已存在');
+    const r = this.roles.create({ key, name, description: description ?? '' });
+    await this.roles.save(r);
+    return { success: true };
+  }
+
+  async deleteRole(key: string) {
+    if (['user', 'admin', 'super_admin'].includes(key)) {
+      throw new BadRequestException('内置角色不能删除');
+    }
+    await this.roles.delete({ key });
+    return { success: true };
+  }
+
+  async updateRole(key: string, body: { name?: string; description?: string }) {
+    const r = await this.roles.findOne({ where: { key } });
+    if (!r) throw new NotFoundException('角色不存在');
+    if (body.name) r.name = body.name;
+    if (body.description !== undefined) r.description = body.description;
+    await this.roles.save(r);
     return { success: true };
   }
 }

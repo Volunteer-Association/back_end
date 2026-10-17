@@ -18,6 +18,8 @@ import { LoggingService } from '../logging/logging.service.js';
 import { IdempotencyService } from '../common/idempotency.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PaymentsService } from './payments.service.js';
+import { DataSource } from 'typeorm';
+import { RiskService } from './risk.service.js';
 import { CreateRechargeDto, TransferDto, SetupPaymentPasswordDto, ChangePaymentPasswordDto } from './dto/payments.dto.js';
 
 @ApiTags('支付-用户端')
@@ -30,11 +32,16 @@ export class PaymentsController {
     private readonly logging: LoggingService,
     private readonly idempotency: IdempotencyService,
     private readonly notifications: NotificationsService,
+    private readonly dataSource: DataSource,
+    private readonly risk: RiskService,
   ) {}
 
   @Get('options')
-  @ApiOperation({ summary: '业务枚举：充值订单状态、充值渠道' })
-  options() {
+  @ApiOperation({ summary: '业务枚举：充值订单状态、充值渠道、流水类型' })
+  async options() {
+    const rows = await this.dataSource.query(
+      `SELECT dict_key AS value, item_value AS label FROM dict_items WHERE dict_type = 'txn_type' AND enabled = 1 ORDER BY sort_order ASC`,
+    );
     return {
       rechargeStatuses: [
         { value: 'pending', label: '待审核', description: '已提交，等待管理员核对到账' },
@@ -46,6 +53,14 @@ export class PaymentsController {
         { value: 'wechat', label: '微信' },
         { value: 'bank', label: '银行转账' },
       ],
+      txnTypes: rows,
+      riskLimits: {
+        transferSingleMaxYuan: await this.risk.getNum('transfer_single_max_yuan', 10000),
+        transferDailyMaxYuan: await this.risk.getNum('transfer_daily_max_yuan', 50000),
+        withdrawSingleMinYuan: await this.risk.getNum('withdraw_single_min_yuan', 1),
+        withdrawSingleMaxYuan: await this.risk.getNum('withdraw_single_max_yuan', 50000),
+        redpacketSingleMaxYuan: await this.risk.getNum('redpacket_single_max_yuan', 2000),
+      },
     };
   }
 
@@ -54,6 +69,12 @@ export class PaymentsController {
   @ApiResponse({ status: 200, description: 'balanceCents + balanceYuan。' })
   balance(@Req() req: Request & { user?: { sub: string } }) {
     return this.payments.getBalance(req.user!.sub);
+  }
+
+  @Get('monthly-summary')
+  @ApiOperation({ summary: '月度账单：按月汇总收支' })
+  monthlySummary(@Req() req: Request & { user?: { sub: string } }) {
+    return this.payments.monthlySummary(req.user!.sub);
   }
 
   @Post('recharge')

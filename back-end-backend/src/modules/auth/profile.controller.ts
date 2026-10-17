@@ -205,6 +205,54 @@ export class ProfileController {
     return profile;
   }
 
+  @Post('auth/kyc/submit')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '提交实名认证申请（真实姓名+证件号），进入管理员审核队列' })
+  async submitKyc(
+    @Body() body: { realName: string; idNumber: string },
+    @Req() request: Request & { user?: unknown },
+  ) {
+    const userId = authenticatedUserId(request.user);
+    if (!body?.realName?.trim() || !body?.idNumber?.trim()) {
+      throw new BadRequestException('请填写真实姓名和证件号码');
+    }
+    const result = await this.dataSource.query(
+      `SELECT verify_status, real_name, id_number FROM users WHERE user_id = ?`,
+      [userId],
+    );
+    const row = (result as any[])[0];
+    if (!row) throw new NotFoundException('用户资料不存在');
+    if (row.verify_status === 2) throw new BadRequestException('已完成实名认证，无需重复提交');
+    if (row.verify_status === 1) throw new BadRequestException('实名审核中，请耐心等待');
+    await this.dataSource.query(
+      `UPDATE users SET real_name = ?, id_number = ?, verify_status = 1, verify_reject_reason = NULL WHERE user_id = ?`,
+      [body.realName.trim(), body.idNumber.trim(), userId],
+    );
+    return { ok: true, message: '实名申请已提交，请等待管理员审核' };
+  }
+
+  @Get('auth/kyc/status')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '查询当前用户实名状态' })
+  async kycStatus(@Req() request: Request & { user?: unknown }) {
+    const userId = authenticatedUserId(request.user);
+    const rows = await this.dataSource.query(
+      `SELECT verify_status, real_name, verified_at, verify_reject_reason, id_number, id_type_label FROM users WHERE user_id = ?`,
+      [userId],
+    );
+    const r = (rows as any[])[0] ?? {};
+    return {
+      status: r.verify_status ?? 0,
+      realName: r.real_name ?? null,
+      verifiedAt: r.verified_at ?? null,
+      rejectReason: r.verify_reject_reason ?? null,
+      idNumber: r.id_number ?? null,
+      idTypeLabel: r.id_type_label ?? null,
+    };
+  }
+
   @Post('auth/avatar')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()

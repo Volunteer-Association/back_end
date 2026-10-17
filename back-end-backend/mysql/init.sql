@@ -246,10 +246,10 @@ CREATE TABLE IF NOT EXISTS `balance_transactions` (
   `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '内部主键（雪花ID）',
   `txn_no` VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '对外支付流水号（28位业务编号，独立于内部主键）',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
-  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust') NOT NULL COMMENT '流水类型',
+  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust', 'withdraw_out', 'withdraw_refund', 'red_packet_out', 'red_packet_in') NOT NULL COMMENT '流水类型',
   `amount_cents` BIGINT NOT NULL COMMENT '变动金额，带符号，单位分',
   `balance_after_cents` BIGINT NOT NULL COMMENT '变动后余额，单位分',
-  `ref_type` VARCHAR(32) NULL COMMENT '关联业务类型：bill / recharge / transfer / admin_adjust',
+  `ref_type` VARCHAR(32) NULL COMMENT '关联业务类型：bill / recharge / transfer / admin_adjust / withdraw / red_packet',
   `ref_id` VARCHAR(30) NULL COMMENT '关联业务单号',
   `note` VARCHAR(200) NULL COMMENT '流水说明',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -303,6 +303,63 @@ CREATE TABLE IF NOT EXISTS `notifications` (
     FOREIGN KEY (`user_id`) REFERENCES `pms_user` (`user_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='站内信通知表';
 
+-- ============== 19. 银行卡表 ==============
+CREATE TABLE IF NOT EXISTS `bank_cards` (
+  `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `user_id` VARCHAR(30) NOT NULL,
+  `bank_name` VARCHAR(64) NOT NULL,
+  `card_no` VARCHAR(32) NOT NULL,
+  `holder_name` VARCHAR(64) NOT NULL,
+  `branch` VARCHAR(128) NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户绑定银行卡';
+
+-- ============== 20. 提现单表 ==============
+CREATE TABLE IF NOT EXISTS `withdrawals` (
+  `id` VARCHAR(32) NOT NULL COMMENT '提现单号 TX 前缀',
+  `user_id` VARCHAR(30) NOT NULL,
+  `bank_card_id` BIGINT NOT NULL,
+  `amount_cents` BIGINT NOT NULL,
+  `fee_cents` BIGINT NOT NULL DEFAULT 0,
+  `actual_cents` BIGINT NOT NULL,
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0待打款 1已打款 2已拒绝退回',
+  `reject_reason` VARCHAR(255) NULL,
+  `operator` VARCHAR(64) NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提现申请单';
+
+-- ============== 21. 红包表 ==============
+CREATE TABLE IF NOT EXISTS `red_packets` (
+  `id` VARCHAR(32) NOT NULL,
+  `sender_id` VARCHAR(30) NOT NULL,
+  `total_cents` BIGINT NOT NULL,
+  `count` INT NOT NULL DEFAULT 1,
+  `type` VARCHAR(20) NOT NULL DEFAULT 'normal',
+  `greeting` VARCHAR(100) DEFAULT '恭喜发财',
+  `status` VARCHAR(20) DEFAULT 'open',
+  `received_cents` BIGINT DEFAULT 0,
+  `expired_at` DATETIME NOT NULL,
+  `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_sender` (`sender_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='红包';
+
+CREATE TABLE IF NOT EXISTS `red_packet_receivers` (
+  `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `packet_id` VARCHAR(32) NOT NULL,
+  `receiver_id` VARCHAR(30) NOT NULL,
+  `amount_cents` BIGINT NOT NULL,
+  `received_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY `uq_packet_receiver` (`packet_id`, `receiver_id`),
+  KEY `idx_receiver` (`receiver_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='红包领取记录';
+
 -- ============================================================
 -- 初始数据
 -- ============================================================
@@ -338,3 +395,22 @@ INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `s
 ('303', 'id_type', '3', '港澳通行证', 3, 1),
 ('304', 'id_type', '4', '台胞证', 4, 1),
 ('305', 'id_type', '9', '其他', 99, 1);
+
+-- ============== 22. 风控配置表 ==============
+CREATE TABLE IF NOT EXISTS `risk_configs` (
+  `id` INT PRIMARY KEY AUTO_INCREMENT,
+  `config_key` VARCHAR(64) NOT NULL UNIQUE,
+  `config_value` VARCHAR(255) NOT NULL,
+  `description` VARCHAR(255),
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='风控规则配置';
+
+INSERT IGNORE INTO risk_configs (config_key, config_value, description) VALUES
+('transfer_single_max_yuan', '10000', '单笔转账上限（元）'),
+('transfer_daily_max_yuan', '50000', '每日转账累计上限（元）'),
+('withdraw_single_min_yuan', '1', '单笔提现下限（元）'),
+('withdraw_single_max_yuan', '50000', '单笔提现上限（元）'),
+('withdraw_daily_max_yuan', '200000', '每日提现累计上限（元）'),
+('recharge_single_max_yuan', '50000', '单笔充值上限（元）'),
+('pay_password_max_fail', '5', '支付密码连续错误锁定次数'),
+('redpacket_single_max_yuan', '2000', '单个红包上限（元）');

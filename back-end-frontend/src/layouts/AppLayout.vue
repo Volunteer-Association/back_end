@@ -80,7 +80,11 @@
             <el-menu-item index="/admin/logs">系统日志</el-menu-item>
             <el-menu-item index="/admin/dict">数据字典</el-menu-item>
             <el-menu-item index="/admin/recharges">充值审核</el-menu-item>
+            <el-menu-item index="/admin/kyc">实名审核</el-menu-item>
+            <el-menu-item index="/admin/withdraw-pending">提现审核</el-menu-item>
             <el-menu-item index="/admin/reconcile">钱包对账</el-menu-item>
+            <el-menu-item index="/admin/risk-config">风控规则</el-menu-item>
+            <el-menu-item index="/admin/monitor">系统监控</el-menu-item>
           </el-sub-menu>
 
           <!-- 超级管理员专属菜单：只做账号与角色管理，不做日常业务 -->
@@ -93,6 +97,7 @@
               <span>权限管理</span>
             </template>
             <el-menu-item index="/admin/users">用户管理</el-menu-item>
+            <el-menu-item index="/admin/roles">角色管理</el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu v-if="currentRole === 'user'" index="others">

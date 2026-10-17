@@ -131,9 +131,18 @@ export interface DictOption {
 }
 
 export function getPaymentsOptions() {
-  return request.get<{ rechargeStatuses: DictOption[]; rechargeChannels: DictOption[] }>(
-    '/payments/options',
-  )
+  return request.get<{
+    rechargeStatuses: DictOption[]
+    rechargeChannels: DictOption[]
+    txnTypes: DictOption[]
+    riskLimits: {
+      transferSingleMaxYuan: number
+      transferDailyMaxYuan: number
+      withdrawSingleMinYuan: number
+      withdrawSingleMaxYuan: number
+      redpacketSingleMaxYuan: number
+    }
+  }>('/payments/options')
 }
 
 export function setupPaymentPassword(paymentPassword: string) {
@@ -288,4 +297,83 @@ export function adminAdjust(input: {
   note?: string
 }) {
   return request.post<BalanceTxn>('/admin/wallet/adjust', input)
+}
+
+// ===== 银行卡与提现 =====
+
+export interface BankCard {
+  id: number
+  bankName: string
+  cardNo: string
+  cardHolder: string
+  branchName: string | null
+  isDefault: boolean
+}
+
+export interface MyWithdrawal {
+  id: string
+  amountYuan: string
+  feeYuan: string
+  actualYuan: string
+  status: number
+  bankName: string
+  cardNo: string
+  rejectReason: string | null
+  createdAt: string
+}
+
+export function listBankCards() {
+  return request.get<BankCard[]>('/wallet/cards')
+}
+export function addBankCard(data: { bankName: string; cardNo: string; cardHolder: string; branchName?: string }) {
+  return request.post('/wallet/cards', data)
+}
+export function removeBankCard(id: number) {
+  return request.delete(`/wallet/cards/${id}`)
+}
+export function requestWithdraw(data: { bankCardId: number; amountYuan: string; paymentPassword: string }) {
+  return request.post('/wallet/withdraw', data)
+}
+export function listMyWithdrawals() {
+  return request.get<MyWithdrawal[]>('/wallet/withdrawals')
+}
+
+// 管理员
+export function adminWithdrawPending() {
+  return request.get<any[]>('/admin/withdraw/pending')
+}
+export function adminWithdrawApprove(id: string) {
+  return request.post(`/admin/withdraw/${id}/approve`)
+}
+export function adminWithdrawReject(id: string, reason?: string) {
+  return request.post(`/admin/withdraw/${id}/reject`, { reason })
+}
+
+// ===== 红包 =====
+
+export function sendRedPacket(data: { toEmail: string; amountYuan: string; greeting?: string; paymentPassword: string }) {
+  return request.post('/red-packet/send', data)
+}
+export function receiveRedPacket(id: string) {
+  return request.post<{ amountYuan: string }>(`/red-packet/receive/${id}`)
+}
+export function myReceivedPackets() {
+  return request.get<any[]>('/red-packet/my-received')
+}
+export function myPendingPackets() {
+  return request.get<any[]>('/red-packet/my-pending')
+}
+export function monthlySummary() {
+  return request.get<{ month: string; incomeYuan: string; expenseYuan: string; count: number }[]>('/payments/monthly-summary')
+}
+
+// ===== 风控配置（管理员） =====
+export function listRiskConfig() {
+  return request.get<{ config_key: string; config_value: string; description: string }[]>('/admin/risk-config')
+}
+export function updateRiskConfig(configKey: string, configValue: string) {
+  return request.put('/admin/risk-config', { configKey, configValue })
+}
+export function mySentPackets() {
+  return request.get<any[]>('/red-packet/my-sent')
 }

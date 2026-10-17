@@ -14,6 +14,8 @@ import { RechargeOrderEntity } from './recharge-order.entity.js';
 import { BalanceTransactionEntity } from './balance-transaction.entity.js';
 import { IdempotencyKeyEntity } from './idempotency-key.entity.js';
 import { NotificationEntity } from './notification.entity.js';
+import { BankCardEntity } from './bank-card.entity.js';
+import { WithdrawalEntity } from './withdrawal.entity.js';
 
 export { UserEntity };
 export { UserProfileEntity, RoleEntity, EmailVerificationEntity };
@@ -21,6 +23,7 @@ export { BillEntity, DictItemEntity };
 export { UserBalanceEntity, RechargeOrderEntity, BalanceTransactionEntity };
 export { IdempotencyKeyEntity };
 export { NotificationEntity };
+export { BankCardEntity, WithdrawalEntity };
 export {
   OAuthIdentityEntity,
   OAuthLoginCodeEntity,
@@ -52,4 +55,6 @@ export const DATABASE_ENTITIES = [
   BalanceTransactionEntity,
   IdempotencyKeyEntity,
   NotificationEntity,
+  BankCardEntity,
+  WithdrawalEntity,
 ] as const;

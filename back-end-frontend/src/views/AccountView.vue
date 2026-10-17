@@ -190,6 +190,28 @@
         </el-button>
       </el-form>
     </el-card>
+
+    <el-card class="pay-password-card" shadow="never" style="margin-top: 16px">
+      <template #header>
+        <div>
+          <h2>支付密码</h2>
+          <p>6 位数字密码，用于转账、提现、发红包等资金操作。</p>
+        </div>
+      </template>
+      <el-form label-position="top" style="max-width: 420px">
+        <el-form-item label="当前支付密码">
+          <el-input v-model="ppwd.old" type="password" show-password maxlength="6"
+            oninput="this.value=this.value.replace(/\D/g,'')" placeholder="未设置时留空" />
+        </el-form-item>
+        <el-form-item label="新支付密码">
+          <el-input v-model="ppwd.nw" type="password" show-password maxlength="6"
+            oninput="this.value=this.value.replace(/\D/g,'')" placeholder="6 位数字" />
+        </el-form-item>
+        <el-button type="primary" :loading="ppwd.saving" @click="savePayPwd">
+          {{ ppwd.has ? '修改支付密码' : '设置支付密码' }}
+        </el-button>
+      </el-form>
+    </el-card>
   </section>
 </template>
 
@@ -208,9 +230,11 @@ import {
   updateSessionSettings,
   type OAuthProvider,
 } from '@/api/modules/auth'
+import { getPaymentPasswordStatus, setupPaymentPassword, changePaymentPassword } from '@/api/modules/payments'
 
 const router = useRouter()
 const auth = useAuthStore()
+const ppwd = reactive({ old: '', nw: '', saving: false, has: false })
 const loading = ref(true)
 const linkingProvider = ref<OAuthProvider | null>(null)
 const providers = ref<OAuthProvider[]>([])
@@ -282,6 +306,10 @@ onMounted(async () => {
     loading.value = false
   }
   await loadPasswordStatus()
+  try {
+    const s = await getPaymentPasswordStatus()
+    ppwd.has = !!s.set
+  } catch { /* ignore */ }
 })
 
 async function loadSessionSettings() {
@@ -380,6 +408,27 @@ async function savePassword() {
     ElMessage.error(message)
   } finally {
     savingPassword.value = false
+  }
+}
+
+async function savePayPwd() {
+  if (ppwd.nw.length !== 6) return ElMessage.warning('支付密码必须是 6 位数字')
+  ppwd.saving = true
+  try {
+    if (ppwd.has) {
+      if (!ppwd.old) return ElMessage.warning('请输入当前支付密码')
+      await changePaymentPassword(ppwd.old, ppwd.nw)
+    } else {
+      await setupPaymentPassword(ppwd.nw)
+    }
+    ppwd.has = true
+    ppwd.old = ''
+    ppwd.nw = ''
+    ElMessage.success('支付密码已保存')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '保存失败')
+  } finally {
+    ppwd.saving = false
   }
 }
 

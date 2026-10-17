@@ -1,11 +1,13 @@
-import {
-  Body,
+import { DataSource } from 'typeorm';
+import { Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -66,12 +68,22 @@ class ResetPasswordDto {
 @UseGuards(AuthGuard)
 @Controller('admin/users')
 export class AdminUsersController {
-  constructor(private readonly adminUsers: AdminUsersService) {}
+  constructor(
+    private readonly adminUsers: AdminUsersService,
+    private readonly dataSource: DataSource,
+  ) {}
 
   /** 只允许 super_admin；日常业务管理员（admin）无权进入这里。 */
   private requireSuperAdmin(req: Request & { user?: { sub: string; roles?: string[] } }) {
     if (!req.user || !req.user.roles?.includes('super_admin')) {
       throw new ForbiddenException('仅超级管理员可执行用户管理操作');
+    }
+  }
+
+  /** 允许 admin 或 super_admin（日常业务管理员）。 */
+  private requireAdmin(req: Request & { user?: { sub: string; roles?: string[] } }) {
+    if (!req.user || !req.user.roles?.some((r) => r === 'admin' || r === 'super_admin')) {
+      throw new ForbiddenException('需要管理员权限');
     }
   }
 
@@ -105,6 +117,49 @@ export class AdminUsersController {
   options(@Req() req: Request & { user?: { sub: string; role: string } }) {
     this.requireSuperAdmin(req);
     return this.adminUsers.options();
+  }
+
+  // ===== KYC 实名认证审核（必须在 :id 之前声明，否则被动态路由抢走）=====
+
+  @Get('kyc/pending')
+  @ApiOperation({ summary: '待审核实名申请列表（业务管理员）' })
+  async kycPending(@Req() req: Request & { user?: { sub: string; roles?: string[] } }) {
+    this.requireAdmin(req);
+    const rows = await this.dataSource.query(
+      `SELECT u.user_id, p.login_name AS username, u.real_name, u.id_number, u.id_type_label, u.created_at
+       FROM users u JOIN pms_user p ON p.user_id = u.user_id
+       WHERE u.verify_status = 1 ORDER BY u.created_at ASC`,
+    );
+    return rows;
+  }
+
+  @Post('kyc/:userId/approve')
+  @ApiOperation({ summary: '通过实名审核（业务管理员）' })
+  async kycApprove(
+    @Req() req: Request & { user?: { sub: string; roles?: string[] } },
+    @Param('userId') userId: string,
+  ) {
+    this.requireAdmin(req);
+    await this.dataSource.query(
+      `UPDATE users SET verify_status = 2, verified_at = NOW(), verify_reject_reason = NULL WHERE user_id = ? AND verify_status = 1`,
+      [userId],
+    );
+    return { ok: true };
+  }
+
+  @Post('kyc/:userId/reject')
+  @ApiOperation({ summary: '拒绝实名审核（业务管理员）' })
+  async kycReject(
+    @Req() req: Request & { user?: { sub: string; roles?: string[] } },
+    @Param('userId') userId: string,
+    @Body() body: { reason?: string },
+  ) {
+    this.requireAdmin(req);
+    await this.dataSource.query(
+      `UPDATE users SET verify_status = 3, verify_reject_reason = ? WHERE user_id = ? AND verify_status = 1`,
+      [body?.reason ?? '信息有误，请重新提交', userId],
+    );
+    return { ok: true };
   }
 
   @Get(':id')
@@ -158,5 +213,37 @@ export class AdminUsersController {
   ) {
     this.requireSuperAdmin(req);
     return this.adminUsers.resetPassword(id, body.newPassword, req.user!.sub);
+  }
+
+  @Get('roles/list')
+  @ApiOperation({ summary: '所有角色列表（仅超管）' })
+  listRoles(@Req() req: Request & { user?: { sub: string } }) {
+    this.requireSuperAdmin(req);
+    return this.adminUsers.listAllRoles();
+  }
+
+  @Post('roles')
+  @ApiOperation({ summary: '新增角色（仅超管）' })
+  createRole(@Req() req: Request & { user?: { sub: string } }, @Body() body: { key: string; name: string; description?: string }) {
+    this.requireSuperAdmin(req);
+    return this.adminUsers.createRole(body.key, body.name, body.description);
+  }
+
+  @Delete('roles/:key')
+  @ApiOperation({ summary: '删除角色（仅超管，不能删内置 user/admin/super_admin）' })
+  deleteRole(@Req() req: Request & { user?: { sub: string } }, @Param('key') key: string) {
+    this.requireSuperAdmin(req);
+    return this.adminUsers.deleteRole(key);
+  }
+
+  @Put('roles/:key')
+  @ApiOperation({ summary: '编辑角色名称和说明（仅超管）' })
+  updateRole(
+    @Req() req: Request & { user?: { sub: string } },
+    @Param('key') key: string,
+    @Body() body: { name?: string; description?: string },
+  ) {
+    this.requireSuperAdmin(req);
+    return this.adminUsers.updateRole(key, body);
   }
 }

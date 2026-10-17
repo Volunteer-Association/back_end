@@ -7,6 +7,8 @@
       <template #actions>
         <el-button type="primary" @click="openTransfer">转账</el-button>
         <el-button type="primary" @click="openRecharge">申请充值</el-button>
+        <el-button type="warning" @click="openWithdraw">提现</el-button>
+        <el-button type="danger" @click="openRedPacket">发红包</el-button>
         <el-button @click="openPaymentPassword">支付密码</el-button>
       </template>
     </PageHeader>
@@ -14,6 +16,36 @@
     <el-card shadow="never" class="balance-card">
       <span class="balance-label">账户余额</span>
       <strong class="balance-value">¥{{ balance.balanceYuan }}</strong>
+    </el-card>
+
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <template #header>
+        <strong>我的红包</strong>
+      </template>
+      <el-table :data="pendingPackets" stripe v-if="pendingPackets.length" style="margin-bottom: 12px">
+        <el-table-column label="来自" prop="from" width="180" />
+        <el-table-column label="金额" width="120">
+          <template #default="{ row }"><strong>¥{{ row.amountYuan }}</strong></template>
+        </el-table-column>
+        <el-table-column label="祝福语" prop="greeting" />
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" @click="claimPacket(row.id)">领取</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-table :data="receivedPackets" stripe>
+        <el-table-column label="来自" prop="from" width="200" />
+        <el-table-column label="金额" width="120">
+          <template #default="{ row }">
+            <strong>¥{{ row.amountYuan }}</strong>
+          </template>
+        </el-table-column>
+        <el-table-column label="领取时间" width="200">
+          <template #default="{ row }">{{ formatDateTime(row.receivedAt) }}</template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!pendingPackets.length && !receivedPackets.length" description="暂无红包" :image-size="60" />
     </el-card>
 
     <el-card shadow="never">
@@ -70,6 +102,23 @@
           <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
         </el-table-column>
       </el-table>
+    </el-card>
+
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <template #header>
+        <strong>月度账单</strong>
+      </template>
+      <el-table :data="monthly" stripe v-if="monthly.length">
+        <el-table-column label="月份" prop="month" width="120" />
+        <el-table-column label="收入" width="150">
+          <template #default="{ row }"><span style="color:#67c23a">+¥{{ row.incomeYuan }}</span></template>
+        </el-table-column>
+        <el-table-column label="支出" width="150">
+          <template #default="{ row }"><span style="color:#f56c6c">-¥{{ row.expenseYuan }}</span></template>
+        </el-table-column>
+        <el-table-column label="笔数" prop="count" width="100" />
+      </el-table>
+      <el-empty v-else description="暂无数据" :image-size="60" />
     </el-card>
 
     <el-card shadow="never">
@@ -176,7 +225,7 @@
           <el-input v-model.trim="transferForm.toAccount" placeholder="如 friend@example.com" maxlength="100" />
         </el-form-item>
         <el-form-item label="转账金额（元）" prop="amountYuan">
-          <el-input v-model="transferForm.amountYuan" placeholder="最低 1 元，单笔上限 10 万元">
+          <el-input v-model="transferForm.amountYuan" :placeholder="`最低 1 元，单笔上限 ${paymentOptions.riskLimits.transferSingleMaxYuan} 元`">
             <template #prepend>¥</template>
           </el-input>
         </el-form-item>
@@ -253,6 +302,65 @@
         </el-button>
       </template>
     </el-dialog>
+
+    <!-- 提现弹窗 -->
+    <el-dialog v-model="wd.visible" title="提现到银行卡" width="480px">
+      <el-alert type="info" :closable="false" style="margin-bottom: 12px"
+        :title="`提现手续费 0.1%（最低1元），单笔 ${paymentOptions.riskLimits.withdrawSingleMinYuan}元~${paymentOptions.riskLimits.withdrawSingleMaxYuan}元。提交后管理员审核打款。`" />
+      <el-form label-width="100px">
+        <el-form-item label="选择银行卡">
+          <el-select v-model="wd.cardId" placeholder="选择银行卡" style="width:100%">
+            <el-option v-for="c in cards" :key="c.id" :label="`${c.bankName} (${c.cardNo})`" :value="c.id" />
+          </el-select>
+          <el-button text type="primary" @click="wd.addMode = true">+ 添加银行卡</el-button>
+          <el-button v-if="wd.cardId" text type="danger" @click="delCard(wd.cardId)">删除此卡</el-button>
+        </el-form-item>
+        <template v-if="wd.addMode">
+          <el-form-item label="银行名称"><el-input v-model="wd.newCard.bankName" placeholder="如 中国建设银行" /></el-form-item>
+          <el-form-item label="卡号"><el-input v-model="wd.newCard.cardNo" placeholder="银行卡号" /></el-form-item>
+          <el-form-item label="持卡人"><el-input v-model="wd.newCard.cardHolder" placeholder="需与实名一致" /></el-form-item>
+          <el-form-item label="支行"><el-input v-model="wd.newCard.branchName" placeholder="选填" /></el-form-item>
+          <el-button size="small" @click="saveNewCard">保存卡片</el-button>
+        </template>
+        <el-form-item label="提现金额">
+          <el-input v-model="wd.amount" placeholder="元">
+            <template #append>元</template>
+          </el-input>
+        </el-form-item>
+        <el-form-item label="支付密码">
+          <el-input v-model="wd.pwd" type="password" show-password placeholder="6位数字支付密码"
+            maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="wd.visible = false">取消</el-button>
+        <el-button type="primary" :loading="wd.submitting" @click="submitWithdraw">确认提现</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 发红包弹窗 -->
+    <el-dialog v-model="rp.visible" title="发红包" width="440px">
+      <el-alert type="warning" :closable="false" style="margin-bottom: 12px" title="红包金额立即扣除，24小时未领取自动退回。" />
+      <el-form label-width="80px">
+        <el-form-item label="对方邮箱">
+          <el-input v-model="rp.toEmail" placeholder="接收人邮箱" />
+        </el-form-item>
+        <el-form-item label="金额">
+          <el-input v-model="rp.amount" :placeholder="`元，单笔上限 ${paymentOptions.riskLimits.redpacketSingleMaxYuan} 元`" />
+        </el-form-item>
+        <el-form-item label="祝福语">
+          <el-input v-model="rp.greeting" placeholder="恭喜发财" maxlength="20" />
+        </el-form-item>
+        <el-form-item label="支付密码">
+          <el-input v-model="rp.pwd" type="password" show-password placeholder="6位数字"
+            maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rp.visible = false">取消</el-button>
+        <el-button type="danger" :loading="rp.submitting" @click="submitRedPacket">发红包</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -281,16 +389,29 @@ import {
   setupPaymentPassword,
   changePaymentPassword,
   getPaymentsOptions,
+  listBankCards,
+  addBankCard,
+  removeBankCard,
+  requestWithdraw,
+  sendRedPacket,
+  myReceivedPackets,
+  myPendingPackets,
+  receiveRedPacket,
+  monthlySummary,
   type BalanceInfo,
   type RechargeChannel,
   type RechargeOrder,
   type BalanceTxn,
+  type BankCard,
 } from '@/api/modules/payments'
 import { formatDateTime } from '@/utils/utils'
 
 const balance = ref<BalanceInfo>({ balanceCents: 0, balanceYuan: '0.00' })
 const recharges = ref<RechargeOrder[]>([])
 const txns = ref<BalanceTxn[]>([])
+const receivedPackets = ref<any[]>([])
+const pendingPackets = ref<any[]>([])
+const monthly = ref<{ month: string; incomeYuan: string; expenseYuan: string; count: number }[]>([])
 
 const dialogVisible = ref(false)
 const submitting = ref(false)
@@ -302,6 +423,114 @@ const form = reactive({
   channel: 'alipay' as RechargeChannel,
   userNote: '',
 })
+
+// ===== 提现 =====
+const cards = ref<BankCard[]>([])
+const wd = reactive({
+  visible: false,
+  cardId: null as number | null,
+  amount: '',
+  pwd: '',
+  submitting: false,
+  addMode: false,
+  newCard: { bankName: '', cardNo: '', cardHolder: '', branchName: '' },
+})
+
+async function loadCards() {
+  cards.value = await listBankCards()
+  if (!wd.cardId && cards.value.length) wd.cardId = cards.value[0].id
+}
+
+function openWithdraw() {
+  wd.visible = true
+  wd.addMode = false
+  wd.amount = ''
+  wd.pwd = ''
+  loadCards()
+}
+
+async function saveNewCard() {
+  try {
+    await addBankCard(wd.newCard)
+    ElMessage.success('银行卡已添加')
+    wd.addMode = false
+    wd.newCard = { bankName: '', cardNo: '', cardHolder: '', branchName: '' }
+    await loadCards()
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '添加失败'
+    ElMessage.error(msg)
+  }
+}
+
+async function delCard(id: number) {
+  try {
+    await removeBankCard(id)
+    ElMessage.success('已删除')
+    wd.cardId = null
+    await loadCards()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '删除失败')
+  }
+}
+
+async function submitWithdraw() {
+  if (!wd.cardId) return ElMessage.warning('请选择银行卡')
+  if (!wd.amount) return ElMessage.warning('请输入金额')
+  if (!wd.pwd) return ElMessage.warning('请输入支付密码')
+  wd.submitting = true
+  try {
+    await requestWithdraw({ bankCardId: wd.cardId, amountYuan: wd.amount, paymentPassword: wd.pwd })
+    ElMessage.success('提现申请已提交，请等待管理员打款')
+    wd.visible = false
+    await reload()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '提现失败')
+  } finally {
+    wd.submitting = false
+  }
+}
+
+// ===== 红包 =====
+const rp = reactive({
+  visible: false,
+  toEmail: '',
+  amount: '',
+  greeting: '',
+  pwd: '',
+  submitting: false,
+})
+function openRedPacket() {
+  rp.visible = true
+  rp.toEmail = ''
+  rp.amount = ''
+  rp.greeting = ''
+  rp.pwd = ''
+}
+async function submitRedPacket() {
+  if (!rp.toEmail) return ElMessage.warning('请输入对方邮箱')
+  if (!rp.amount) return ElMessage.warning('请输入金额')
+  if (!rp.pwd) return ElMessage.warning('请输入支付密码')
+  rp.submitting = true
+  try {
+    await sendRedPacket({ toEmail: rp.toEmail, amountYuan: rp.amount, greeting: rp.greeting, paymentPassword: rp.pwd })
+    ElMessage.success('红包已发送')
+    rp.visible = false
+    await reload()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '发送失败')
+  } finally {
+    rp.submitting = false
+  }
+}
+async function claimPacket(id: string) {
+  try {
+    const r = await receiveRedPacket(id)
+    ElMessage.success(`成功领取 ¥${r.amountYuan}`)
+    await reload()
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || e?.message || '领取失败')
+  }
+}
 
 const rules: FormRules = {
   amountYuan: [
@@ -343,7 +572,19 @@ const pwdForm = reactive({ oldPwd: '', newPwd: '', confirmPwd: '' })
 const paymentOptions = ref<{
   rechargeStatuses: { value: string; label: string }[]
   rechargeChannels: { value: string; label: string }[]
-}>({ rechargeStatuses: [], rechargeChannels: [] })
+  txnTypes: { value: string; label: string }[]
+  riskLimits: {
+    transferSingleMaxYuan: number
+    transferDailyMaxYuan: number
+    withdrawSingleMinYuan: number
+    withdrawSingleMaxYuan: number
+    redpacketSingleMaxYuan: number
+  }
+}>({ rechargeStatuses: [], rechargeChannels: [], txnTypes: [], riskLimits: {
+  transferSingleMaxYuan: 10000, transferDailyMaxYuan: 50000,
+  withdrawSingleMinYuan: 1, withdrawSingleMaxYuan: 50000,
+  redpacketSingleMaxYuan: 2000,
+} })
 
 function channelLabel(c: string) {
   return paymentOptions.value.rechargeChannels.find((x) => x.value === c)?.label ?? c
@@ -358,14 +599,7 @@ function statusLabel(s: string) {
 }
 
 function txnTypeLabel(t: string) {
-  return {
-    recharge: '充值',
-    consume: '消费',
-    refund: '退款',
-    transfer_out: '转出',
-    transfer_in: '转入',
-    adjust: '调整',
-  }[t as never] ?? t
+  return paymentOptions.value.txnTypes.find((x) => x.value === t)?.label ?? t
 }
 
 function openRecharge() {
@@ -506,6 +740,9 @@ async function reload() {
   balance.value = await getBalance()
   recharges.value = await listMyRecharges()
   txns.value = await listMyTxns()
+  try { receivedPackets.value = await myReceivedPackets() } catch { receivedPackets.value = [] }
+  try { pendingPackets.value = await myPendingPackets() } catch { pendingPackets.value = [] }
+  try { monthly.value = await monthlySummary() } catch { monthly.value = [] }
 }
 
 onMounted(async () => {

@@ -156,12 +156,7 @@
         </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="filterType" placeholder="全部" clearable style="width: 140px">
-            <el-option label="充值" value="recharge" />
-            <el-option label="消费" value="consume" />
-            <el-option label="转出" value="transfer_out" />
-            <el-option label="转入" value="transfer_in" />
-            <el-option label="退款" value="refund" />
-            <el-option label="调整" value="adjust" />
+            <el-option v-for="t in txnTypes" :key="t.value" :label="t.label" :value="t.value" />
           </el-select>
         </el-form-item>
         <el-button type="primary" @click="loadTxns">查询</el-button>
@@ -273,11 +268,15 @@ import {
   adminReconcileByUser,
   adminReconcileDaily,
   adminWalletTransactions,
+  getPaymentsOptions,
   type BalanceTxn,
   type DailyReconcileRow,
+  type DictOption,
   type ReconcileReport,
   type UserReconcileRow,
 } from '@/api/modules/payments'
+
+const txnTypes = ref<DictOption[]>([])
 
 const startDate = ref('')
 const endDate = ref('')
@@ -310,18 +309,13 @@ const allTimeRows = computed(() => {
     { label: '转入', cents: a.transferInSumCents },
     { label: '退款', cents: a.refundSumCents },
     { label: '调整', cents: a.adjustSumCents },
+    { label: '提现', cents: (a as any).withdrawOutSumCents ?? 0 },
+    { label: '提现退回', cents: (a as any).withdrawRefundSumCents ?? 0 },
   ]
 })
 
 function typeLabel(t: string) {
-  return {
-    recharge: '充值',
-    consume: '消费',
-    transfer_out: '转出',
-    transfer_in: '转入',
-    refund: '退款',
-    adjust: '调整',
-  }[t as never] ?? t
+  return txnTypes.value.find((x) => x.value === t)?.label ?? t
 }
 
 /**
@@ -379,7 +373,11 @@ async function loadTxns() {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const opts = await getPaymentsOptions()
+    txnTypes.value = opts.txnTypes || []
+  } catch { /* ignore */ }
   void load()
   void loadTxns()
   void loadUserReconcile()

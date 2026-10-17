@@ -76,6 +76,33 @@
           <div class="row"><span class="label">证件类型</span><span class="value">{{ idTypeLabel }}</span></div>
           <div class="row"><span class="label">证件号码</span><span class="value">{{ profile.idNumber || '未填写' }}</span></div>
           <div class="row"><span class="label">联系地址</span><span class="value">{{ profile.address || '未填写' }}</span></div>
+
+          <!-- 实名认证状态卡片 -->
+          <div class="kyc-card" :class="kycStatusClass">
+            <div class="kyc-header">
+              <span class="kyc-title">实名认证</span>
+              <el-tag v-if="kyc.status === 0" size="small" type="info">未认证</el-tag>
+              <el-tag v-else-if="kyc.status === 1" size="small" type="warning">审核中</el-tag>
+              <el-tag v-else-if="kyc.status === 2" size="small" type="success">已认证</el-tag>
+              <el-tag v-else size="small" type="danger">已拒绝</el-tag>
+            </div>
+            <p v-if="kyc.status === 2" class="kyc-desc">
+              {{ kyc.idTypeLabel || '证件' }}：{{ maskIdNumber(kyc.idNumber) }}
+              （{{ kyc.realName }}）
+            </p>
+            <p v-else-if="kyc.status === 1" class="kyc-desc">
+              您的实名申请已提交，管理员将在 1-3 个工作日内完成审核。
+            </p>
+            <p v-else-if="kyc.status === 3" class="kyc-desc danger">
+              审核未通过：{{ kyc.rejectReason || '信息有误' }}，请重新提交。
+            </p>
+            <p v-else class="kyc-desc">
+              实名认证后才能使用转账、提现等功能。请填写真实姓名和证件号码。
+            </p>
+            <el-button v-if="kyc.status === 0 || kyc.status === 3" size="small" type="primary" @click="kycDialog = true">
+              {{ kyc.status === 3 ? '重新提交' : '立即认证' }}
+            </el-button>
+          </div>
           <div class="action-row">
             <el-button type="primary" @click="enterEdit">修改资料</el-button>
           </div>
@@ -178,6 +205,22 @@
       :file="selectedFile"
       @success="onCropped"
     />
+
+    <el-dialog v-model="kycDialog" title="实名认证" width="420px">
+      <el-alert type="info" :closable="false" title="请填写与证件一致的真实信息，提交后由管理员审核。" style="margin-bottom: 16px" />
+      <el-form label-width="80px">
+        <el-form-item label="真实姓名">
+          <el-input v-model="kycForm.realName" placeholder="请输入真实姓名" maxlength="20" />
+        </el-form-item>
+        <el-form-item label="证件号码">
+          <el-input v-model="kycForm.idNumber" placeholder="请输入身份证号" maxlength="18" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="kycDialog = false">取消</el-button>
+        <el-button type="primary" :loading="kycSubmitting" @click="onSubmitKyc">提交</el-button>
+      </template>
+    </el-dialog>
   </section>
 </template>
 
@@ -194,6 +237,9 @@ import {
   sendChangeEmailCode,
   getProfileOptions,
   getRoleOptions,
+  getKycStatus,
+  submitKyc,
+  type KycStatus,
   type RoleOption,
 } from '@/api/modules/auth'
 import { useAuthStore } from '@/stores/auth'
@@ -263,6 +309,51 @@ function roleTagType(r: string): 'danger' | 'warning' | 'primary' {
   if (r === 'super_admin') return 'danger'
   if (r === 'admin') return 'warning'
   return 'primary'
+}
+
+// ===== KYC =====
+const kyc = ref<KycStatus>({ status: 0, realName: null, verifiedAt: null, rejectReason: null, idNumber: null, idTypeLabel: null })
+const kycDialog = ref(false)
+const kycForm = reactive({ realName: '', idNumber: '' })
+const kycSubmitting = ref(false)
+
+const kycStatusClass = computed(() => {
+  if (kyc.value.status === 2) return 'ok'
+  if (kyc.value.status === 1) return 'pending'
+  if (kyc.value.status === 3) return 'rejected'
+  return ''
+})
+
+function maskIdNumber(v: string | null): string {
+  if (!v) return ''
+  if (v.length <= 6) return v
+  return v.slice(0, 4) + '****' + v.slice(-4)
+}
+
+async function loadKyc() {
+  try {
+    kyc.value = await getKycStatus()
+  } catch { /* 忽略 */ }
+}
+
+async function onSubmitKyc() {
+  if (!kycForm.realName.trim() || !kycForm.idNumber.trim()) {
+    ElMessage.warning('请填写真实姓名和证件号码')
+    return
+  }
+  kycSubmitting.value = true
+  try {
+    await submitKyc({ realName: kycForm.realName.trim(), idNumber: kycForm.idNumber.trim() })
+    ElMessage.success('实名申请已提交')
+    kycDialog.value = false
+    kycForm.realName = ''
+    kycForm.idNumber = ''
+    await loadKyc()
+  } catch (e) {
+    ElMessage.error(errorMessage(e, '提交失败'))
+  } finally {
+    kycSubmitting.value = false
+  }
 }
 
 const emailChanged = computed(
@@ -428,7 +519,7 @@ async function saveProfile() {
 }
 
 onMounted(async () => {
-  await Promise.all([loadProfile(), loadOptions()])
+  await Promise.all([loadProfile(), loadOptions(), loadKyc()])
 })
 
 async function loadOptions() {
@@ -562,4 +653,19 @@ async function loadOptions() {
   display: flex;
   gap: 12px;
 }
+
+.kyc-card {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  border-left: 4px solid #dcdfe6;
+}
+.kyc-card.ok { border-left-color: #67c23a; background: #f0f9eb; }
+.kyc-card.pending { border-left-color: #e6a23c; background: #fdf6ec; }
+.kyc-card.rejected { border-left-color: #f56c6c; background: #fef0f0; }
+.kyc-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.kyc-title { font-weight: 600; }
+.kyc-desc { color: #606266; font-size: 13px; margin: 8px 0; }
+.kyc-desc.danger { color: #f56c6c; }
 </style>

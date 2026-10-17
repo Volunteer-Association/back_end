@@ -32,6 +32,10 @@ export interface UserProfile {
   idTypeLabel?: string | null
   idNumber?: string | null
   address?: string | null
+  realName?: string | null
+  verifyStatus?: number
+  verifiedAt?: string | null
+  rejectReason?: string | null
   createdAt?: string | null
 }
 
@@ -207,6 +211,37 @@ export function getSessionSettings() {
 /** 更新当前账号的多设备登录设置。 */
 export function updateSessionSettings(data: SessionSettings) {
   return request.patch<SessionSettings>('/auth/session-settings', data)
+}
+
+// ===== KYC 实名认证 =====
+
+export interface KycStatus {
+  status: number // 0未提交 1审核中 2已通过 3已拒绝
+  realName: string | null
+  verifiedAt: string | null
+  rejectReason: string | null
+  idNumber: string | null
+  idTypeLabel: string | null
+}
+
+export function getKycStatus() {
+  return request.get<KycStatus>('/auth/kyc/status')
+}
+
+export function submitKyc(data: { realName: string; idNumber: string }) {
+  return request.post<{ ok: boolean; message: string }>('/auth/kyc/submit', data)
+}
+
+// ===== 管理员 KYC 审核 =====
+
+export function adminKycPending() {
+  return request.get<any[]>('/admin/users/kyc/pending')
+}
+export function adminKycApprove(userId: string) {
+  return request.post(`/admin/users/kyc/${userId}/approve`)
+}
+export function adminKycReject(userId: string, reason?: string) {
+  return request.post(`/admin/users/kyc/${userId}/reject`, { reason })
 }
 
 /** 查询当前用户已经关联的第三方平台。 */

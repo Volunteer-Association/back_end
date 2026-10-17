@@ -81,16 +81,46 @@ const router = createRouter({
           meta: { admin: true, title: '充值审核' },
         },
         {
+          path: 'admin/kyc',
+          name: 'admin-kyc',
+          component: () => import('@/views/AdminKycView.vue'),
+          meta: { admin: true, title: '实名审核' },
+        },
+        {
+          path: 'admin/withdraw-pending',
+          name: 'admin-withdraw',
+          component: () => import('@/views/AdminWithdrawView.vue'),
+          meta: { admin: true, title: '提现审核' },
+        },
+        {
           path: 'admin/reconcile',
           name: 'admin-reconcile',
           component: () => import('@/views/AdminReconcileView.vue'),
           meta: { admin: true, title: '钱包对账' },
         },
         {
+          path: 'admin/risk-config',
+          name: 'admin-risk',
+          component: () => import('@/views/AdminRiskView.vue'),
+          meta: { admin: true, title: '风控规则' },
+        },
+        {
+          path: 'admin/monitor',
+          name: 'admin-monitor',
+          component: () => import('@/views/AdminMonitorView.vue'),
+          meta: { admin: true, title: '系统监控' },
+        },
+        {
           path: 'admin/users',
           name: 'admin-users',
           component: () => import('@/views/AdminUsersView.vue'),
           meta: { superAdmin: true, title: '用户管理' },
+        },
+        {
+          path: 'admin/roles',
+          name: 'admin-roles',
+          component: () => import('@/views/AdminRolesView.vue'),
+          meta: { superAdmin: true, title: '角色管理' },
         },
         {
           path: 'upload',
