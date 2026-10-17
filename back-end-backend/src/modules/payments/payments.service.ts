@@ -24,6 +24,7 @@ import {
 } from '../../../mysql/snowflake-id.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { RiskService } from './risk.service.js';
+import { BCRYPT_ROUNDS } from '../auth/password-policy.js';
 
 export interface RechargeRequest {
   amountCents: number;
@@ -308,7 +309,7 @@ export class PaymentsService {
     if (profile.paymentPasswordHash) {
       throw new ConflictException('已设置过支付密码，请走修改流程');
     }
-    profile.paymentPasswordHash = await bcrypt.hash(paymentPassword, 10);
+    profile.paymentPasswordHash = await bcrypt.hash(paymentPassword, BCRYPT_ROUNDS);
     await this.profiles.save(profile);
   }
 
@@ -325,7 +326,7 @@ export class PaymentsService {
     }
     const ok = await bcrypt.compare(oldPassword, profile.paymentPasswordHash);
     if (!ok) throw new BadRequestException('原支付密码错误');
-    profile.paymentPasswordHash = await bcrypt.hash(newPassword, 10);
+    profile.paymentPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.profiles.save(profile);
   }
 

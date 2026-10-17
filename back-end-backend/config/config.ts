@@ -97,11 +97,14 @@ export function createAppConfiguration(env: Environment = process.env) {
         ? false
         : trustProxyRaw;
 
+  // 端口在 server.port 和 OAuth 回调默认地址中复用，只解析一次。
+  const port = integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535);
+
   return {
     nodeEnv,
     server: {
       host: value(env, 'SERVER_IP', '0.0.0.0'),
-      port: integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535),
+      port,
       staticPrefix: prefix,
       trustProxy,
       // 生产环境默认关闭 Swagger；设置 SWAGGER_ENABLED=true 可显式开启。
@@ -142,7 +145,7 @@ export function createAppConfiguration(env: Environment = process.env) {
         callbackUrl: value(
           env,
           'GITEE_CALLBACK_URL',
-          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535)}/auth/oauth/gitee/callback`,
+          `http://localhost:${port}/auth/oauth/gitee/callback`,
         ),
       },
       github: {
@@ -151,7 +154,7 @@ export function createAppConfiguration(env: Environment = process.env) {
         callbackUrl: value(
           env,
           'GITHUB_CALLBACK_URL',
-          `http://localhost:${integerFrom(env, ['PORT', 'SERVER_PORT'], 3000, 1, 65535)}/auth/oauth/github/callback`,
+          `http://localhost:${port}/auth/oauth/github/callback`,
         ),
       },
     },

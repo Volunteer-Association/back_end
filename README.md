@@ -1,6 +1,6 @@
 # 前后端分离管理系统
 
-基于 Vue 3、NestJS 和 MySQL 的前后端分离管理系统。前端负责登录与管理页面，后端提供认证、用户资料、OAuth、文件和系统接口；数据库结构通过显式 SQL 初始化和迁移，应用启动时不会自动改写数据库。
+基于 Vue 3、NestJS 和 MySQL 的前后端分离管理系统。前端负责登录与管理页面，后端提供认证、用户资料、OAuth、文件、钱包、红包、提现、风控、通知和系统接口；数据库结构通过显式 SQL 初始化和迁移，应用启动时不会自动改写数据库。
 
 ## 目录
 
@@ -18,14 +18,24 @@
 
 ## 功能概览
 
-| 功能 | 说明 |
+| 功能域 | 说明 |
 | --- | --- |
 | 认证与会话 | 邮箱验证码注册、本地账号登录、短期 Access Token 与 HttpOnly Refresh Token；支持账号状态检查、会话撤销和多设备登录设置。 |
 | 第三方账号 | Gitee/GitHub OAuth 登录与已登录账号绑定；授权状态一次性校验，第三方密钥只保存在后端。 |
-| 用户资料 | 独立的“个人资料”页面管理昵称、手机号和性别；邮箱只读，避免跳过邮箱验证。 |
-| 账单管理 | 记录个人收入与支出，支持分类、日期筛选、收支汇总，以及账单新增、编辑和删除。 |
+| 用户资料与权限 | 独立的”个人资料”页面管理昵称、手机号和性别；RBAC 角色体系（user / admin / super_admin），支持角色管理和用户管理。 |
+| 账单管理 | 记录个人收入与支出，支持分类（数据字典驱动）、日期筛选、月度收支汇总。 |
+| 钱包与余额 | 所有金额以”分”为单位存储，事务 + 悲观行锁保证并发安全；支持充值申请（管理员审核）、用户间转账、退款、管理员手工调整，每笔变动写流水可对账。 |
+| 支付密码 | 独立于登录密码的 6 位数字支付密码，转账、发红包、提现前必须验证。 |
+| 红包 | 用户间发送红包，接收后实时到账。 |
+| 提现 | 绑定银行卡、申请提现，管理员审核后打款；风控限额控制单笔/日累计。 |
+| 风控规则 | 数据库可配置的转账单笔上限、日累计上限、提现限额等，管理员可在线调整。 |
+| 对账 | 钱包总余额 vs 流水加总自动核对，支持按用户、按日期、按时间段排查差异。 |
+| 实名审核（KYC） | 用户提交实名信息，管理员审核通过/驳回。 |
+| 站内通知 | 充值到账、提现审核、红包等业务事件自动推送站内信，支持未读计数和一键已读。 |
+| 数据字典 | 集中管理账单分类、证件类型等下拉项，避免前后端硬编码魔法字符串。 |
+| 系统监控 | 实时展示 CPU、内存、网络 IO、磁盘 IO 曲线。 |
 | 系统日志 | 数据库明确区分 `http` 请求日志与 `event` 业务事件，支持按分类/等级筛选及服务端分页。 |
-| 其他页面 | 系统信息、文件上传、3D/AI/API 演示；`/demo` CRUD 是模拟数据的占位示例。 |
+| 其他页面 | 系统信息、文件上传（阿里云 OSS）、3D/AI/API 演示；`/demo` CRUD 是模拟数据的占位示例。 |
 
 ## 本地快速启动
 
@@ -89,18 +99,28 @@ back-end/
 ├── back-end-frontend/
 │   ├── src/
 │   │   ├── api/                 # Axios 客户端及按业务拆分的 API
-│   │   ├── assets/              # 样式、图片和页面资源
-│   │   ├── components/          # 可复用 UI 组件
+│   │   │   └── modules/         # auth / payments / bills / dict / notifications / admin-users 等
+│   │   ├── assets/               # 样式、图片和页面资源
+│   │   ├── components/          # 可复用 UI 组件（头像裁剪、通知铃铛、页头）
 │   │   ├── composables/         # 可复用组合式逻辑
 │   │   ├── layouts/             # 登录后的应用布局
-│   │   ├── router/              # 页面路由与登录访问控制
-│   │   ├── stores/              # Pinia 状态（当前包含认证状态）
+│   │   ├── router/              # 页面路由与登录/管理员访问控制
+│   │   ├── stores/              # Pinia 状态（认证、通知未读数）
 │   │   ├── types/               # Vite 和应用类型声明
 │   │   ├── utils/               # 通用工具
 │   │   └── views/               # 页面视图
-│   │       ├── AccountView.vue  # 密码、OAuth 绑定和登录设备设置
-│   │       ├── UserProfileView.vue # 独立的用户资料编辑页
-│   │       └── AdminLogsView.vue # 管理员日志筛选与分页
+│   │       ├── WalletView.vue        # 钱包：余额、充值、转账、流水
+│   │       ├── AccountView.vue       # 密码、OAuth 绑定、支付密码、登录设备
+│   │       ├── UserProfileView.vue   # 个人资料编辑
+│   │       ├── AdminLogsView.vue     # 管理员日志筛选与分页
+│   │       ├── AdminRechargeView.vue # 充值审核
+│   │       ├── AdminWithdrawView.vue # 提现审核
+│   │       ├── AdminReconcileView.vue # 钱包对账
+│   │       ├── AdminRiskView.vue     # 风控规则配置
+│   │       ├── AdminMonitorView.vue  # 系统监控
+│   │       ├── AdminKycView.vue      # 实名审核
+│   │       ├── AdminUsersView.vue    # 超管用户管理
+│   │       └── AdminRolesView.vue    # 角色管理
 │   ├── public/                  # 构建时原样复制的静态文件
 │   ├── nginx.conf               # SPA 回退和 API 反向代理
 │   └── package.json
@@ -108,19 +128,26 @@ back-end/
 │   ├── config/
 │   │   └── config.ts            # 环境变量映射、优先级和启动校验
 │   ├── mysql/
-│   │   ├── entities/            # 集中维护认证账号、用户资料、角色及业务实体
+│   │   ├── entities/            # 集中维护认证账号、用户资料、角色、余额、流水、红包、提现、银行卡等实体
 │   │   ├── repositories/        # 集中封装 TypeORM 数据访问
 │   │   ├── migrations/          # 已有数据库的显式 SQL 变更
-│   │   ├── connect.ts           # MySQL 连接配置，关闭自动同步
-│   │   ├── mysql.module.ts      # 注册并导出数据库仓储
-│   │   └── init.sql             # 本地数据库初始化 SQL
+│   │   ├── connect.ts            # MySQL 连接配置，关闭自动同步
+│   │   ├── mysql.module.ts        # 注册并导出数据库仓储
+│   │   └── init.sql              # 本地数据库初始化 SQL
 │   ├── src/
 │   │   ├── demo/                # 受保护的示例 CRUD 接口
 │   │   ├── guards/              # JWT 鉴权守卫
+│   │   ├── middleware/           # HTTP 请求日志中间件
 │   │   ├── modules/
-│   │   │   ├── auth/            # 登录、JWT 签发和认证
-│   │   │   ├── system/          # 系统信息、上传和音频接口
-│   │   │   └── users/           # 用户业务服务
+│   │   │   ├── auth/            # 登录、JWT 签发、OAuth、注册邮箱验证码、登录限流
+│   │   │   ├── users/           # 用户业务服务
+│   │   │   ├── admin-users/     # 超管用户与角色管理
+│   │   │   ├── system/          # 系统信息、文件上传（OSS）
+│   │   │   ├── bills/           # 个人账单 CRUD
+│   │   │   ├── dict/            # 数据字典
+│   │   │   ├── payments/        # 钱包核心：余额、充值、转账、退款、管理员调整、对账、红包、提现、风控
+│   │   │   ├── notifications/   # 站内信通知
+│   │   │   └── logging/         # 审计日志写入与查询
 │   │   ├── app.module.ts        # 应用模块装配
 │   │   └── main.ts              # Nest 启动和全局 HTTP 配置
 │   ├── test/                    # 端到端测试

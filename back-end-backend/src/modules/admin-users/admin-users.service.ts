@@ -18,10 +18,19 @@ import {
   SNOWFLAKE_ID_GENERATOR,
   SnowflakeIdGenerator,
 } from '../../../mysql/snowflake-id.js';
+import { BCRYPT_ROUNDS } from '../auth/password-policy.js';
 
 /** 角色白名单：超级管理员只能从这三个角色里选，避免乱挂角色。 */
 const ALLOWED_ROLE_KEYS = ['user', 'admin', 'super_admin'] as const;
 export type AllowedRoleKey = (typeof ALLOWED_ROLE_KEYS)[number];
+
+/** 校验传入的角色 key 均在白名单内，防止前端构造非法角色。 */
+function assertAllowedRoleKeys(keys: string[]): asserts keys is AllowedRoleKey[] {
+  const invalid = keys.filter((k) => !ALLOWED_ROLE_KEYS.includes(k as AllowedRoleKey));
+  if (invalid.length) {
+    throw new BadRequestException(`非法角色 key: ${invalid.join(', ')}`);
+  }
+}
 
 /** 可被管理员设置的账号状态。 */
 export type AdminSetStatus = 'active' | 'inactive' | 'banned';
@@ -119,30 +128,12 @@ export class AdminUsersService {
     }
 
     const [rows, total] = await qb.getManyAndCount();
-    const items: AdminUserListItem[] = rows.map((u) => ({
-      userId: u.userId,
-      username: u.username,
-      email: u.profile?.email ?? '',
-      nickname: u.profile?.nickname ?? null,
-      status: u.status,
-      roleKeys: (u.roles ?? []).map((r) => r.key),
-      role: u.role,
-      lastLoginAt: u.lastLoginAt,
-      lastLoginIp: u.lastLoginIp,
-      createdAt: u.createdAt,
-    }));
+    const items: AdminUserListItem[] = rows.map((u) => this.toListItem(u));
     return { items, total, page, pageSize };
   }
 
-  /** 用户详情。 */
-  async detail(userId: string): Promise<AdminUserListItem> {
-    const u = await this.users
-      .createQueryBuilder('user')
-      .leftJoinAndSelect('user.profile', 'profile')
-      .leftJoinAndSelect('user.roles', 'role')
-      .where('user.userId = :userId', { userId })
-      .getOne();
-    if (!u) throw new NotFoundException('用户不存在');
+  /** 将带 profile/roles 关联的用户实体映射为管理列表项。 */
+  private toListItem(u: UserEntity): AdminUserListItem {
     return {
       userId: u.userId,
       username: u.username,
@@ -155,6 +146,18 @@ export class AdminUsersService {
       lastLoginIp: u.lastLoginIp,
       createdAt: u.createdAt,
     };
+  }
+
+  /** 用户详情。 */
+  async detail(userId: string): Promise<AdminUserListItem> {
+    const u = await this.users
+      .createQueryBuilder('user')
+      .leftJoinAndSelect('user.profile', 'profile')
+      .leftJoinAndSelect('user.roles', 'role')
+      .where('user.userId = :userId', { userId })
+      .getOne();
+    if (!u) throw new NotFoundException('用户不存在');
+    return this.toListItem(u);
   }
 
   /** 创建用户（管理员代注册），默认授予 user 角色。 */
@@ -171,6 +174,7 @@ export class AdminUsersService {
       throw new BadRequestException('密码长度需在 8-72 位之间');
     }
     const roleKeys = (input.roleKeys ?? ['user']).filter((k) => typeof k === 'string' && k.length > 0);
+    assertAllowedRoleKeys(roleKeys);
     const roleEntities = await this.roles.findBy(
       roleKeys.length ? roleKeys.map((key) => ({ key })) : { key: 'user' },
     );
@@ -182,7 +186,7 @@ export class AdminUsersService {
         const savedUser = manager.getRepository(UserEntity).create({
           userId,
           username,
-          password: await hash(input.password, 10),
+          password: await hash(input.password, BCRYPT_ROUNDS),
           status: input.status ?? 'active',
           creater: '超级管理员',
           createrId: operatorId,
@@ -245,6 +249,7 @@ export class AdminUsersService {
     if (!cleanKeys.length) {
       throw new BadRequestException('至少要分配一个角色');
     }
+    assertAllowedRoleKeys(cleanKeys);
     const target = await this.users.findOne({
       where: { userId: targetUserId },
       relations: { roles: true },
@@ -286,7 +291,7 @@ export class AdminUsersService {
       await manager.getRepository(UserEntity).update(
         { userId: targetUserId },
         {
-          password: await hash(newPassword, 10),
+          password: await hash(newPassword, BCRYPT_ROUNDS),
           operator: '超级管理员',
           operatorId: operatorId,
           sessionVersion: target.sessionVersion + 1,

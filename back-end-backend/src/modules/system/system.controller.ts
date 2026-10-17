@@ -14,6 +14,7 @@ let netRxMbps = 0, netTxMbps = 0, netTotalRxMB = 0, netTotalTxMB = 0;
 let lastNetBytes: { rx: number; tx: number; at: number } | null = null;
 let disks: any[] = [];
 let diskReadMBs = 0, diskWriteMBs = 0;
+let procQueueLen = 0;
 
 function sampleCpu() {
   const cpus = os.cpus();
@@ -79,6 +80,15 @@ async function sampleDisk() {
   } catch { /* keep old */ }
 }
 
+async function sampleQueue() {
+  try {
+    if (isWin) {
+      const { stdout } = await execAsync('powershell -Command "(Get-Counter \'\\System\\Processor Queue Length\').CounterSamples.CookedValue"', { timeout: 2000 });
+      procQueueLen = Number(stdout.trim());
+    }
+  } catch { /* keep old */ }
+}
+
 async function sampleDiskIO() {
   try {
     if (isWin) {
@@ -109,8 +119,9 @@ export class SystemController implements OnModuleInit, OnModuleDestroy {
     sampleNet();
     sampleDisk();
     sampleDiskIO();
+    sampleQueue();
     this.cpuTimer = setInterval(sampleCpu, 1000);
-    this.sampleTimer = setInterval(() => { sampleNet(); sampleDiskIO(); }, 2000);
+    this.sampleTimer = setInterval(() => { sampleNet(); sampleDiskIO(); sampleQueue(); }, 2000);
     this.diskTimer = setInterval(sampleDisk, 30000);
   }
 
@@ -128,7 +139,7 @@ export class SystemController implements OnModuleInit, OnModuleDestroy {
     const freeMem = os.freemem();
     const usedMem = totalMem - freeMem;
     return {
-      cpu: { model: cpus[0]?.model || '', cores: cpus.length, usagePercent: Number(cpuUsage.toFixed(1)), loadAvg: os.loadavg().map(x => Number(x.toFixed(2))) },
+      cpu: { model: cpus[0]?.model || '', cores: cpus.length, usagePercent: Number(cpuUsage.toFixed(1)), loadAvg: os.loadavg().map(x => Number(x.toFixed(2))), queueLen: procQueueLen },
       memory: { totalGB: Number((totalMem/1024**3).toFixed(2)), usedGB: Number((usedMem/1024**3).toFixed(2)), freeGB: Number((freeMem/1024**3).toFixed(2)), usagePercent: Number(((usedMem/totalMem)*100).toFixed(1)) },
       disks,
       net: { rxMbps: netRxMbps, txMbps: netTxMbps, totalRxMB: netTotalRxMB, totalTxMB: netTotalTxMB },

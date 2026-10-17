@@ -377,7 +377,7 @@
  */
 import { onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import {
   getBalance,
