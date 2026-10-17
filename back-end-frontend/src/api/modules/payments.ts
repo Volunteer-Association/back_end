@@ -320,16 +320,27 @@ export interface BankCard {
   isDefault: boolean
 }
 
+/** 提现单状态：0待审核 1已打款 2已拒绝退回 3超时自动取消退回。 */
+export type WithdrawalStatus = 0 | 1 | 2 | 3
+
 export interface MyWithdrawal {
   id: string
   amountYuan: string
   feeYuan: string
   actualYuan: string
-  status: number
+  status: WithdrawalStatus
   bankName: string
   cardNo: string
   rejectReason: string | null
   createdAt: string
+}
+
+/** 提现状态展示元数据（标签 + 标签颜色）。键为 status 数字，未知状态回退到 info。 */
+export const WITHDRAWAL_STATUS_META: Record<number, { label: string; tagType: 'warning' | 'success' | 'danger' | 'info' }> = {
+  0: { label: '待审核', tagType: 'warning' },
+  1: { label: '已打款', tagType: 'success' },
+  2: { label: '已拒绝并退回', tagType: 'danger' },
+  3: { label: '超时自动取消', tagType: 'info' },
 }
 
 export function listBankCards() {

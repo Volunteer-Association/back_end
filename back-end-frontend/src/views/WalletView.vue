@@ -106,6 +106,46 @@
 
     <el-card shadow="never" style="margin-bottom: 16px">
       <template #header>
+        <strong>提现记录</strong>
+      </template>
+      <el-table :data="withdrawals" stripe v-if="withdrawals.length">
+        <el-table-column label="提现单号" min-width="190">
+          <template #default="{ row }"><code class="mono">{{ row.id }}</code></template>
+        </el-table-column>
+        <el-table-column label="申请金额" width="110">
+          <template #default="{ row }">¥{{ row.amountYuan }}</template>
+        </el-table-column>
+        <el-table-column label="手续费" width="90">
+          <template #default="{ row }">¥{{ row.feeYuan }}</template>
+        </el-table-column>
+        <el-table-column label="到账金额" width="110">
+          <template #default="{ row }">¥{{ row.actualYuan }}</template>
+        </el-table-column>
+        <el-table-column label="银行卡" width="170">
+          <template #default="{ row }">{{ row.bankName }} {{ row.cardNo }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="140">
+          <template #default="{ row }">
+            <el-tag :type="WITHDRAWAL_STATUS_META[row.status]?.tagType ?? 'info'" size="small">
+              {{ WITHDRAWAL_STATUS_META[row.status]?.label ?? `状态${row.status}` }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="说明" min-width="180">
+          <template #default="{ row }">
+            <span v-if="row.status === 2 || row.status === 3" class="review-reject">{{ row.rejectReason || '—' }}</span>
+            <span v-else class="muted">等待管理员审核打款</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="申请时间" width="170">
+          <template #default="{ row }">{{ formatDateTime(row.createdAt) }}</template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else description="暂无提现记录" :image-size="60" />
+    </el-card>
+
+    <el-card shadow="never" style="margin-bottom: 16px">
+      <template #header>
         <strong>月度账单</strong>
       </template>
       <el-table :data="monthly" stripe v-if="monthly.length">
@@ -393,21 +433,25 @@ import {
   addBankCard,
   removeBankCard,
   requestWithdraw,
+  listMyWithdrawals,
   sendRedPacket,
   myReceivedPackets,
   myPendingPackets,
   receiveRedPacket,
   monthlySummary,
+  WITHDRAWAL_STATUS_META,
   type BalanceInfo,
   type RechargeChannel,
   type RechargeOrder,
   type BalanceTxn,
   type BankCard,
+  type MyWithdrawal,
 } from '@/api/modules/payments'
 import { formatDateTime } from '@/utils/utils'
 
 const balance = ref<BalanceInfo>({ balanceCents: 0, balanceYuan: '0.00' })
 const recharges = ref<RechargeOrder[]>([])
+const withdrawals = ref<MyWithdrawal[]>([])
 const txns = ref<BalanceTxn[]>([])
 const receivedPackets = ref<any[]>([])
 const pendingPackets = ref<any[]>([])
@@ -740,6 +784,7 @@ async function reload() {
   balance.value = await getBalance()
   recharges.value = await listMyRecharges()
   txns.value = await listMyTxns()
+  try { withdrawals.value = await listMyWithdrawals() } catch { withdrawals.value = [] }
   try { receivedPackets.value = await myReceivedPackets() } catch { receivedPackets.value = [] }
   try { pendingPackets.value = await myPendingPackets() } catch { pendingPackets.value = [] }
   try { monthly.value = await monthlySummary() } catch { monthly.value = [] }

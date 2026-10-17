@@ -29,7 +29,7 @@ export class WithdrawalEntity {
   @Column({ name: 'actual_amount_cents', type: 'bigint' })
   actualAmountCents: string;
 
-  @Column({ type: 'tinyint', default: 0, comment: '0待审核 1已打款 2已拒绝 3已退回' })
+  @Column({ type: 'tinyint', default: 0, comment: '0待审核 1已打款 2已拒绝退回 3超时自动取消退回' })
   status: number;
 
   @Column({ name: 'reject_reason', type: 'varchar', length: 255, nullable: true })

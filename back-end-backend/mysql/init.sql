@@ -322,18 +322,20 @@ CREATE TABLE IF NOT EXISTS `bank_cards` (
 CREATE TABLE IF NOT EXISTS `withdrawals` (
   `id` VARCHAR(32) NOT NULL COMMENT '提现单号 TX 前缀',
   `user_id` VARCHAR(30) NOT NULL,
-  `bank_card_id` BIGINT NOT NULL,
+  `bank_card_id` VARCHAR(30) NOT NULL COMMENT '银行卡ID（bank_cards.id）',
   `amount_cents` BIGINT NOT NULL,
   `fee_cents` BIGINT NOT NULL DEFAULT 0,
-  `actual_cents` BIGINT NOT NULL,
-  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0待打款 1已打款 2已拒绝退回',
+  `actual_amount_cents` BIGINT NOT NULL,
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0待打款 1已打款 2已拒绝退回 3超时自动取消退回',
   `reject_reason` VARCHAR(255) NULL,
-  `operator` VARCHAR(64) NULL,
+  `operator` VARCHAR(50) NULL,
+  `approved_at` DATETIME NULL COMMENT '审核/处理时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_user` (`user_id`),
-  KEY `idx_status` (`status`)
+  KEY `idx_status` (`status`),
+  KEY `idx_status_created` (`status`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提现申请单';
 
 -- ============== 21. 红包表 ==============
@@ -416,4 +418,5 @@ INSERT IGNORE INTO risk_configs (config_key, config_value, description) VALUES
 ('withdraw_daily_max_yuan', '200000', '每日提现累计上限（元）'),
 ('recharge_single_max_yuan', '50000', '单笔充值上限（元）'),
 ('pay_password_max_fail', '5', '支付密码连续错误锁定次数'),
-('redpacket_single_max_yuan', '2000', '单个红包上限（元）');
+('redpacket_single_max_yuan', '2000', '单个红包上限（元）'),
+('withdraw_timeout_hours', '48', '提现单待审核超时时间（小时），超时后系统自动取消并退款');

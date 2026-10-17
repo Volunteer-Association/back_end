@@ -22,6 +22,7 @@ import { WithdrawController } from './withdraw.controller.js';
 import { AdminWithdrawController } from './admin-withdraw.controller.js';
 import { AdminRiskController } from './admin-risk.controller.js';
 import { WithdrawService } from './withdraw.service.js';
+import { WithdrawScheduler } from './withdraw.scheduler.js';
 import { RedPacketController } from './red-packet.controller.js';
 import { RedPacketService } from './red-packet.service.js';
 import { RedPacketScheduler } from './red-packet.scheduler.js';
@@ -48,7 +49,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     ]),
   ],
   controllers: [PaymentsController, AdminPaymentsController, AdminWalletController, WithdrawController, AdminWithdrawController, RedPacketController, AdminRiskController],
-  providers: [PaymentsService, AuthGuard, WithdrawService, RedPacketService, RedPacketScheduler, RiskService],
+  providers: [PaymentsService, AuthGuard, WithdrawService, WithdrawScheduler, RedPacketService, RedPacketScheduler, RiskService],
   exports: [PaymentsService],
 })
 export class PaymentsModule {}

@@ -1,10 +1,11 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { BankCardEntity } from '../../../mysql/entities/bank-card.entity.js';
 import { WithdrawalEntity } from '../../../mysql/entities/withdrawal.entity.js';
@@ -12,15 +13,24 @@ import { BalanceTransactionEntity } from '../../../mysql/entities/balance-transa
 import { UserBalanceEntity } from '../../../mysql/entities/user-balance.entity.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { RiskService } from './risk.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 /** 提现费率：每笔收 0.1%，最低 1 元（100 分） */
 const WITHDRAW_FEE_RATE = 0.001;
 const WITHDRAW_FEE_MIN = 100;
 const WITHDRAW_MIN = 100;       // 1 元
 const WITHDRAW_MAX = 5_000_000; // 5 万
+/** 单次超时扫描最多处理的提现单数，避免一次性长事务。 */
+const TIMEOUT_SCAN_BATCH = 100;
+/** 待审核超时时间的默认值（小时），可由 risk_configs.withdraw_timeout_hours 覆盖。 */
+const DEFAULT_WITHDRAW_TIMEOUT_HOURS = 48;
+/** 系统自动操作的操作人标识。 */
+const SYSTEM_OPERATOR = 'system';
 
 @Injectable()
 export class WithdrawService {
+  private readonly logger = new Logger(WithdrawService.name);
+
   constructor(
     @InjectRepository(BankCardEntity)
     private readonly cards: Repository<BankCardEntity>,
@@ -29,6 +39,7 @@ export class WithdrawService {
     private readonly dataSource: DataSource,
     private readonly paymentNo: PaymentNoGenerator,
     private readonly risk: RiskService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ===== 用户端 =====
@@ -228,6 +239,7 @@ export class WithdrawService {
   }
 
   async adminReject(orderId: string, operator: string, reason?: string) {
+    const text = reason ?? '提现失败';
     await this.dataSource.transaction('READ COMMITTED', async (manager) => {
       // 行锁锁定提现单并复查 status=0，与「通过」互斥，避免重复处理。
       const w = await manager.findOne(WithdrawalEntity, {
@@ -235,33 +247,134 @@ export class WithdrawService {
         lock: { mode: 'pessimistic_write' },
       });
       if (!w) throw new NotFoundException('提现单不存在或已处理');
-      // 拒绝要退回余额
-      w.status = 2;
-      w.rejectReason = reason ?? '提现失败';
-      w.operator = operator;
-      await manager.save(WithdrawalEntity, w);
-
-      const bal = await manager.findOne(UserBalanceEntity, {
-        where: { userId: w.userId },
-        lock: { mode: 'pessimistic_write' },
+      // 拒绝要退回余额（与超时自动取消共用退款逻辑）
+      await this.refundInTx(manager, w, {
+        status: 2,
+        operator,
+        reason: text,
+        note: `提现被退回：${text}`,
       });
-      const current = bal ? Number(bal.balanceCents) : 0;
-      bal!.balanceCents = String(current + Number(w.amountCents));
-      bal!.version += 1;
-      await manager.save(bal);
+    });
+  }
 
-      const refTxnNo = this.paymentNo.nextTxnNo('withdraw_refund');
-      await manager.save(BalanceTransactionEntity, {
-        id: refTxnNo,
-        txnNo: refTxnNo,
-        userId: w.userId,
-        type: 'withdraw_refund',
-        amountCents: String(w.amountCents),
-        balanceAfterCents: String(current + Number(w.amountCents)),
-        refType: 'withdraw',
-        refId: orderId,
-        note: `提现被退回：${w.rejectReason ?? ''}`,
-      });
+  /**
+   * 扫描并自动取消「超时仍未审核」的提现单。
+   *
+   * 由定时任务周期性调用。超时阈值由 risk_configs.withdraw_timeout_hours 控制（默认 48h，
+   * 配置为 0 或非正数视为关闭）。每个提现单单独事务：
+   * 1. FOR UPDATE 锁定提现单并复查 status=0（多实例/重复执行只成功一次）；
+   * 2. 退回申请时已扣的金额到用户余额，写 withdraw_refund 流水；
+   * 3. 单据置为 status=3（超时自动取消）并发送站内信。
+   *
+   * 注意：手续费随本金一并退回（提现未打款，不产生实际成本）。
+   */
+  async autoCancelExpired(): Promise<{ scanned: number; canceled: number; amountCents: number }> {
+    const timeoutHours = await this.risk.getNum(
+      'withdraw_timeout_hours',
+      DEFAULT_WITHDRAW_TIMEOUT_HOURS,
+    );
+    const hours = Math.floor(timeoutHours);
+    if (!Number.isFinite(hours) || hours <= 0) {
+      return { scanned: 0, canceled: 0, amountCents: 0 };
+    }
+
+    // hours 已校验为正整数，安全拼接，避免参数化 INTERVAL/LIMIT 在不同驱动上的兼容问题。
+    const rows = (await this.dataSource.query(
+      `SELECT id FROM withdrawals
+       WHERE status = 0 AND created_at < DATE_SUB(NOW(), INTERVAL ${hours} HOUR)
+       ORDER BY created_at ASC LIMIT ${TIMEOUT_SCAN_BATCH}`,
+    )) as Array<{ id: string }>;
+
+    let canceled = 0;
+    let amountCentsTotal = 0;
+
+    for (const { id } of rows) {
+      let userId = '';
+      let amountCents = 0;
+      try {
+        await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+          const w = await manager.findOne(WithdrawalEntity, {
+            where: { id, status: 0 },
+            lock: { mode: 'pessimistic_write' },
+          });
+          if (!w) return; // 已被管理员处理或被其它实例取消。
+          const reason = `超过 ${hours} 小时未审核，系统自动取消并退款`;
+          await this.refundInTx(manager, w, {
+            status: 3,
+            operator: SYSTEM_OPERATOR,
+            reason,
+            note: `提现超时自动退回：${reason}`,
+          });
+          userId = w.userId;
+          amountCents = Number(w.amountCents);
+        });
+      } catch (error) {
+        // 单据失败不阻断整批，下轮仍会捞到（status 仍为 0）。
+        this.logger.error(
+          `提现超时取消失败 orderId=${id}：${(error as Error)?.message ?? String(error)}`,
+        );
+        continue;
+      }
+
+      if (userId) {
+        canceled += 1;
+        amountCentsTotal += amountCents;
+        await this.notifications.createSafe({
+          userId,
+          type: 'withdraw',
+          title: '提现已超时自动取消',
+          content: `你的一笔 ¥${(amountCents / 100).toFixed(2)} 提现因超过 ${hours} 小时未审核，已自动取消并退回余额。`,
+          bizType: 'withdraw',
+          bizId: id,
+        });
+      }
+    }
+
+    if (rows.length > 0) {
+      this.logger.log(
+        `提现超时扫描完成：共 ${rows.length} 单，取消 ${canceled} 单，合计退回 ¥${(amountCentsTotal / 100).toFixed(2)}`,
+      );
+    }
+    return { scanned: rows.length, canceled, amountCents: amountCentsTotal };
+  }
+
+  /**
+   * 在已持有提现单悲观行锁的事务内执行「退回余额」并落终态。
+   * 人工拒绝（status=2）与超时自动取消（status=3）共用，保证两条退款路径口径一致。
+   */
+  private async refundInTx(
+    manager: EntityManager,
+    w: WithdrawalEntity,
+    params: { status: number; operator: string; reason: string; note: string },
+  ): Promise<void> {
+    w.status = params.status;
+    w.rejectReason = params.reason;
+    w.operator = params.operator;
+    w.approvedAt = new Date();
+    await manager.save(WithdrawalEntity, w);
+
+    const bal = await manager.findOne(UserBalanceEntity, {
+      where: { userId: w.userId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    // 提现申请时已扣款、余额行必然存在；缺失属于异常数据，抛错让事务回滚，下轮重试。
+    if (!bal) throw new Error(`提现退款失败：用户 ${w.userId} 余额记录不存在`);
+    const after = Number(bal.balanceCents) + Number(w.amountCents);
+    bal.balanceCents = String(after);
+    bal.version += 1;
+    await manager.save(bal);
+
+    const refTxnNo = this.paymentNo.nextTxnNo('withdraw_refund');
+    await manager.save(BalanceTransactionEntity, {
+      id: refTxnNo,
+      txnNo: refTxnNo,
+      userId: w.userId,
+      type: 'withdraw_refund',
+      amountCents: String(w.amountCents),
+      balanceAfterCents: String(after),
+      refType: 'withdraw',
+      refId: w.id,
+      note: params.note,
     });
   }
 
