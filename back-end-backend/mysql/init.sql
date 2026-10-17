@@ -61,10 +61,12 @@ CREATE TABLE IF NOT EXISTS `roles` (
   `role_key` VARCHAR(50) NOT NULL COMMENT '角色标识',
   `name` VARCHAR(100) NOT NULL COMMENT '角色名称',
   `description` VARCHAR(255) NULL COMMENT '角色说明',
+  `sort_order` INT NOT NULL DEFAULT 0 COMMENT '排序值，越小越靠前；角色管理中可调整',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_roles_role_key` (`role_key`)
+  UNIQUE KEY `uq_roles_role_key` (`role_key`),
+  KEY `idx_roles_sort` (`sort_order`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='角色表';
 
 -- ============== 4. 用户角色关联表 ==============
@@ -246,7 +248,7 @@ CREATE TABLE IF NOT EXISTS `balance_transactions` (
   `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '内部主键（雪花ID）',
   `txn_no` VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '对外支付流水号（28位业务编号，独立于内部主键）',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
-  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust', 'withdraw_out', 'withdraw_refund', 'red_packet_out', 'red_packet_in') NOT NULL COMMENT '流水类型',
+  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust', 'withdraw_out', 'withdraw_refund', 'red_packet_out', 'red_packet_in', 'red_packet_refund') NOT NULL COMMENT '流水类型',
   `amount_cents` BIGINT NOT NULL COMMENT '变动金额，带符号，单位分',
   `balance_after_cents` BIGINT NOT NULL COMMENT '变动后余额，单位分',
   `ref_type` VARCHAR(32) NULL COMMENT '关联业务类型：bill / recharge / transfer / admin_adjust / withdraw / red_packet',
@@ -347,7 +349,8 @@ CREATE TABLE IF NOT EXISTS `red_packets` (
   `expired_at` DATETIME NOT NULL,
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_sender` (`sender_id`)
+  KEY `idx_sender` (`sender_id`),
+  KEY `idx_packet_status_expired` (`status`, `expired_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='红包';
 
 CREATE TABLE IF NOT EXISTS `red_packet_receivers` (
@@ -366,10 +369,10 @@ CREATE TABLE IF NOT EXISTS `red_packet_receivers` (
 
 -- 默认角色
 -- 1=普通用户；2=日常业务管理员（充值审核/对账/字典/日志）；3=超级管理员（仅用户与角色管理，不跑日常业务）
-INSERT IGNORE INTO `roles` (`id`, `role_key`, `name`, `description`) VALUES
-(1, 'user', '普通用户', '默认注册用户角色'),
-(2, 'admin', '业务管理员', '负责日常业务：充值审核、对账、字典维护、日志查看'),
-(3, 'super_admin', '超级管理员', '拥有最高权限，仅用于用户管理与角色分配，不参与日常业务操作');
+INSERT IGNORE INTO `roles` (`id`, `role_key`, `name`, `description`, `sort_order`) VALUES
+(1, 'user', '普通用户', '默认注册用户角色', 10),
+(2, 'admin', '业务管理员', '负责日常业务：充值审核、对账、字典维护、日志查看', 20),
+(3, 'super_admin', '超级管理员', '拥有最高权限，仅用于用户管理与角色分配，不参与日常业务操作', 30);
 
 -- 账单分类字典数据
 INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `sort_order`, `enabled`) VALUES

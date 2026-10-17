@@ -224,9 +224,12 @@ export class AdminUsersController {
 
   @Post('roles')
   @ApiOperation({ summary: '新增角色（仅超管）' })
-  createRole(@Req() req: Request & { user?: { sub: string } }, @Body() body: { key: string; name: string; description?: string }) {
+  createRole(
+    @Req() req: Request & { user?: { sub: string } },
+    @Body() body: { key: string; name: string; description?: string; sortOrder?: number },
+  ) {
     this.requireSuperAdmin(req);
-    return this.adminUsers.createRole(body.key, body.name, body.description);
+    return this.adminUsers.createRole(body.key, body.name, body.description, body.sortOrder);
   }
 
   @Delete('roles/:key')
@@ -236,12 +239,23 @@ export class AdminUsersController {
     return this.adminUsers.deleteRole(key);
   }
 
+  // 注意：roles/sort 必须在 roles/:key 之前声明，否则 "sort" 会被当成 :key。
+  @Put('roles/sort')
+  @ApiOperation({ summary: '批量调整角色排序（仅超管，传入完整有序 key 列表）' })
+  reorderRoles(
+    @Req() req: Request & { user?: { sub: string } },
+    @Body() body: { keys: string[] },
+  ) {
+    this.requireSuperAdmin(req);
+    return this.adminUsers.reorderRoles(body?.keys ?? []);
+  }
+
   @Put('roles/:key')
-  @ApiOperation({ summary: '编辑角色名称和说明（仅超管）' })
+  @ApiOperation({ summary: '编辑角色名称、说明和排序（仅超管）' })
   updateRole(
     @Req() req: Request & { user?: { sub: string } },
     @Param('key') key: string,
-    @Body() body: { name?: string; description?: string },
+    @Body() body: { name?: string; description?: string; sortOrder?: number },
   ) {
     this.requireSuperAdmin(req);
     return this.adminUsers.updateRole(key, body);

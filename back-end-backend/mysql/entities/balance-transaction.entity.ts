@@ -19,6 +19,11 @@ import {
  * - transfer_out：转账出款（转给其他用户）
  * - transfer_in：转账收款（收到其他用户转账）
  * - adjust：管理员手工调整
+ * - withdraw_out：提现扣款
+ * - withdraw_refund：提现被驳回退回
+ * - red_packet_out：发红包扣款
+ * - red_packet_in：收红包入账
+ * - red_packet_refund：过期红包未领部分退回发送方
  *
  * amountCents 带符号：正数 = 加钱，负数 = 扣钱。
  * balanceAfterCents 是变动后的余额快照，方便追溯。
@@ -33,7 +38,8 @@ export type BalanceTxnType =
   | 'withdraw_out'  // 提现扣款
   | 'withdraw_refund' // 提现被拒绝退回
   | 'red_packet_out' // 发红包
-  | 'red_packet_in';  // 收红包
+  | 'red_packet_in' // 收红包
+  | 'red_packet_refund'; // 过期红包未领部分退回
 
 @Entity({ name: 'balance_transactions' })
 @Index('idx_txn_user_created', ['userId', 'createdAt'])
@@ -56,7 +62,19 @@ export class BalanceTransactionEntity {
 
   @Column({
     type: 'enum',
-    enum: ['recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust'],
+    enum: [
+      'recharge',
+      'consume',
+      'refund',
+      'transfer_out',
+      'transfer_in',
+      'adjust',
+      'withdraw_out',
+      'withdraw_refund',
+      'red_packet_out',
+      'red_packet_in',
+      'red_packet_refund',
+    ],
   })
   type: BalanceTxnType;
 

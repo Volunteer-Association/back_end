@@ -122,8 +122,12 @@ export class WithdrawService {
     const txnNo = this.paymentNo.nextTxnNo('withdraw_out');
 
     await this.dataSource.transaction('READ COMMITTED', async (manager) => {
-      // 检查余额
-      const bal = await manager.findOne(UserBalanceEntity, { where: { userId } });
+      // 悲观行锁：version 是普通字段（非 @VersionColumn），乐观锁不生效，
+      // 并发提现/转账必须靠行锁串行化，否则可能读到相同余额而超扣。
+      const bal = await manager.findOne(UserBalanceEntity, {
+        where: { userId },
+        lock: { mode: 'pessimistic_write' },
+      });
       const current = bal ? Number(bal.balanceCents) : 0;
       if (current < amountCents) throw new BadRequestException('余额不足');
 
@@ -214,25 +218,33 @@ export class WithdrawService {
   }
 
   async adminApprove(orderId: string, operator: string) {
-    const w = await this.withdrawals.findOne({ where: { id: orderId, status: 0 } });
-    if (!w) throw new NotFoundException('提现单不存在或已处理');
-    w.status = 1;
-    w.operator = operator;
-    w.approvedAt = new Date();
-    await this.withdrawals.save(w);
+    // 条件更新：只有 status=0 的单据能被通过，affected=0 说明不存在或已处理，
+    // 防止「通过」与「拒绝」并发或重复点击导致同一单据被处理两次。
+    const res = await this.withdrawals.update(
+      { id: orderId, status: 0 },
+      { status: 1, operator, approvedAt: new Date() },
+    );
+    if (!res.affected) throw new BadRequestException('提现单不存在或已处理');
   }
 
   async adminReject(orderId: string, operator: string, reason?: string) {
-    const w = await this.withdrawals.findOne({ where: { id: orderId, status: 0 } });
-    if (!w) throw new NotFoundException('提现单不存在或已处理');
-    // 拒绝要退回余额
     await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      // 行锁锁定提现单并复查 status=0，与「通过」互斥，避免重复处理。
+      const w = await manager.findOne(WithdrawalEntity, {
+        where: { id: orderId, status: 0 },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!w) throw new NotFoundException('提现单不存在或已处理');
+      // 拒绝要退回余额
       w.status = 2;
       w.rejectReason = reason ?? '提现失败';
       w.operator = operator;
       await manager.save(WithdrawalEntity, w);
 
-      const bal = await manager.findOne(UserBalanceEntity, { where: { userId: w.userId } });
+      const bal = await manager.findOne(UserBalanceEntity, {
+        where: { userId: w.userId },
+        lock: { mode: 'pessimistic_write' },
+      });
       const current = bal ? Number(bal.balanceCents) : 0;
       bal!.balanceCents = String(current + Number(w.amountCents));
       bal!.version += 1;

@@ -26,6 +26,7 @@ const TXN_TYPE_CODES: Record<BalanceTxnType, string> = {
   withdraw_refund: '61',
   red_packet_out: '70',
   red_packet_in: '71',
+  red_packet_refund: '72',
 };
 
 const SEQ_MOD = 1_000_000;

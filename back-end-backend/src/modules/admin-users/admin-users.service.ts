@@ -87,7 +87,7 @@ export class AdminUsersService {
 
   /** 下拉选项：状态和角色枚举由后端统一定义，前端不写死。 */
   async options() {
-    const all = await this.roles.find({ order: { id: 'ASC' } });
+    const all = await this.roles.find({ order: { sortOrder: 'ASC', id: 'ASC' } });
     return {
       statuses: [
         { value: 'active', label: '正常', description: '账号可正常登录和使用' },
@@ -308,16 +308,31 @@ export class AdminUsersService {
   }
 
   async listAllRoles() {
-    const rows = await this.roles.find({ order: { id: 'ASC' } });
-    return rows.map((r) => ({ id: r.id, key: r.key, name: r.name, description: r.description }));
+    const rows = await this.roles.find({ order: { sortOrder: 'ASC', id: 'ASC' } });
+    return rows.map((r) => ({
+      id: r.id,
+      key: r.key,
+      name: r.name,
+      description: r.description,
+      sortOrder: r.sortOrder,
+    }));
   }
 
-  async createRole(key: string, name: string, description?: string) {
+  async createRole(key: string, name: string, description?: string, sortOrder?: number) {
     if (!key || !name) throw new BadRequestException('角色 key 和名称不能为空');
     if (!/^[a-z0-9_]+$/.test(key)) throw new BadRequestException('角色 key 只能用小写字母、数字、下划线');
     const exists = await this.roles.findOne({ where: { key } });
     if (exists) throw new ConflictException('角色 key 已存在');
-    const r = this.roles.create({ key, name, description: description ?? '' });
+    // 未显式指定排序时追加到列表末尾（取当前最大排序值 + 10）
+    let order = typeof sortOrder === 'number' && Number.isFinite(sortOrder) ? Math.trunc(sortOrder) : null;
+    if (order === null) {
+      const max = await this.roles
+        .createQueryBuilder('r')
+        .select('MAX(r.sort_order)', 'max')
+        .getRawOne<{ max: number | null }>();
+      order = (max?.max ?? 0) + 10;
+    }
+    const r = this.roles.create({ key, name, description: description ?? '', sortOrder: order });
     await this.roles.save(r);
     return { success: true };
   }
@@ -330,12 +345,40 @@ export class AdminUsersService {
     return { success: true };
   }
 
-  async updateRole(key: string, body: { name?: string; description?: string }) {
+  async updateRole(key: string, body: { name?: string; description?: string; sortOrder?: number }) {
     const r = await this.roles.findOne({ where: { key } });
     if (!r) throw new NotFoundException('角色不存在');
     if (body.name) r.name = body.name;
     if (body.description !== undefined) r.description = body.description;
+    if (typeof body.sortOrder === 'number' && Number.isFinite(body.sortOrder)) {
+      r.sortOrder = Math.trunc(body.sortOrder);
+    }
     await this.roles.save(r);
+    return { success: true };
+  }
+
+  /**
+   * 批量重排角色顺序（前端上移/下移后提交完整的有序 key 列表）。
+   * 校验传入集合必须与数据库现有角色完全一致，避免漏排/多排导致顺序错乱。
+   * 重新按 10、20、30… 编号，为后续插入留出中间空档。
+   */
+  async reorderRoles(keys: string[]) {
+    if (!Array.isArray(keys) || keys.length === 0) {
+      throw new BadRequestException('排序数据不能为空');
+    }
+    const all = await this.roles.find();
+    if (all.length !== keys.length || new Set(keys).size !== keys.length) {
+      throw new BadRequestException('角色数量不匹配，排序失败');
+    }
+    const existingKeys = new Set(all.map((r) => r.key));
+    if (keys.some((k) => !existingKeys.has(k))) {
+      throw new BadRequestException('包含不存在的角色，排序失败');
+    }
+    await this.dataSource.transaction(async (manager) => {
+      for (let i = 0; i < keys.length; i++) {
+        await manager.update(RoleEntity, { key: keys[i] }, { sortOrder: (i + 1) * 10 });
+      }
+    });
     return { success: true };
   }
 }

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -10,8 +11,26 @@ import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { RiskService } from './risk.service.js';
 
+/** 红包有效期：24 小时。 */
+const RED_PACKET_TTL_MS = 24 * 3600 * 1000;
+/** 单次定时扫描最多处理的红包数量，避免一次性占用过多长事务。 */
+const EXPIRED_SCAN_BATCH = 100;
+
+/** red_packets 表行（原生 SQL 查询，字段为下划线命名）。 */
+interface RedPacketRow {
+  id: string;
+  sender_id: string;
+  total_cents: number | string;
+  received_cents: number | string;
+  status: string;
+  greeting: string | null;
+  expired_at: Date;
+}
+
 @Injectable()
 export class RedPacketService {
+  private readonly logger = new Logger(RedPacketService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly paymentNo: PaymentNoGenerator,
@@ -48,10 +67,14 @@ export class RedPacketService {
     if (!ok) throw new BadRequestException('支付密码错误');
 
     const packetId = this.paymentNo.nextTxnNo('red_packet_out');
-    const expiredAt = new Date(Date.now() + 24 * 3600 * 1000);
+    const expiredAt = new Date(Date.now() + RED_PACKET_TTL_MS);
 
     await this.dataSource.transaction('READ COMMITTED', async (manager) => {
-      const bal = await manager.findOne(UserBalanceEntity, { where: { userId: senderId } });
+      // 悲观行锁：并发发红包/转账/退款时串行化，避免余额超扣。
+      const bal = await manager.findOne(UserBalanceEntity, {
+        where: { userId: senderId },
+        lock: { mode: 'pessimistic_write' },
+      });
       const current = bal ? Number(bal.balanceCents) : 0;
       if (current < amountCents) throw new BadRequestException('余额不足');
 
@@ -63,7 +86,7 @@ export class RedPacketService {
         id: packetId + '-t',
         txnNo: packetId,
         userId: senderId,
-        type: 'red_packet_out' as any,
+        type: 'red_packet_out',
         amountCents: String(-amountCents),
         balanceAfterCents: String(current - amountCents),
         refType: 'red_packet',
@@ -93,34 +116,55 @@ export class RedPacketService {
 
   /** 领红包 */
   async receive(receiverId: string, packetId: string) {
-    const packet = (await this.dataSource.query(
-      `SELECT * FROM red_packets WHERE id = ? AND status = 'open'`,
-      [packetId],
-    )) as any[];
-    const p = packet[0];
-    if (!p) throw new BadRequestException('红包不存在或已过期');
-    if (p.sender_id === receiverId) throw new BadRequestException('不能领自己发的红包');
-    if (new Date() > p.expired_at) throw new BadRequestException('红包已过期');
+    let amount = 0;
+    let senderId = '';
 
-    // 是否已领
-    const received = await this.dataSource.query(
-      `SELECT id FROM red_packet_receivers WHERE packet_id = ? AND receiver_id = ?`,
-      [packetId, receiverId],
-    );
-    if ((received as any[]).length) throw new BadRequestException('你已领取过该红包');
-
-    const amount = Number(p.total_cents);
-
+    // 全部检查与余额变动放在同一事务，并用 FOR UPDATE 锁定红包行：
+    // 防止「领取」与「过期退款」并发，或同一用户重复点击导致双花。
     await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      const packets = (await manager.query(
+        `SELECT * FROM red_packets WHERE id = ? FOR UPDATE`,
+        [packetId],
+      )) as RedPacketRow[];
+      const p = packets[0];
+      if (!p) throw new BadRequestException('红包不存在');
+      if (p.sender_id === receiverId) throw new BadRequestException('不能领自己发的红包');
+      if (p.status !== 'open') throw new BadRequestException('红包已被领取或已过期');
+      if (new Date(p.expired_at).getTime() <= Date.now()) {
+        throw new BadRequestException('红包已过期');
+      }
+
+      // 是否已领（表上也有 UNIQUE(packet_id, receiver_id) 兜底）
+      const received = await manager.query(
+        `SELECT id FROM red_packet_receivers WHERE packet_id = ? AND receiver_id = ?`,
+        [packetId, receiverId],
+      );
+      if ((received as any[]).length) throw new BadRequestException('你已领取过该红包');
+
+      amount = Number(p.total_cents);
+      senderId = p.sender_id;
+
       await manager.query(
         `INSERT INTO red_packet_receivers (packet_id, receiver_id, amount_cents) VALUES (?, ?, ?)`,
         [packetId, receiverId, amount],
       );
 
-      const bal = await manager.findOne(UserBalanceEntity, { where: { userId: receiverId } });
-      const current = bal ? Number(bal.balanceCents) : 0;
-      bal!.balanceCents = String(current + amount);
-      bal!.version += 1;
+      // 锁定接收方余额行再加钱（不存在则创建，收款方可能第一次有钱入账）
+      let bal = await manager.findOne(UserBalanceEntity, {
+        where: { userId: receiverId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const after = (bal ? Number(bal.balanceCents) : 0) + amount;
+      if (!bal) {
+        bal = manager.create(UserBalanceEntity, {
+          userId: receiverId,
+          balanceCents: String(after),
+          version: 1,
+        });
+      } else {
+        bal.balanceCents = String(after);
+        bal.version += 1;
+      }
       await manager.save(bal);
 
       const txnNo = this.paymentNo.nextTxnNo('red_packet_in');
@@ -128,9 +172,9 @@ export class RedPacketService {
         id: txnNo,
         txnNo,
         userId: receiverId,
-        type: 'red_packet_in' as any,
+        type: 'red_packet_in',
         amountCents: String(amount),
-        balanceAfterCents: String(current + amount),
+        balanceAfterCents: String(after),
         refType: 'red_packet',
         refId: packetId,
         note: '收到红包',
@@ -145,7 +189,7 @@ export class RedPacketService {
 
     // 给发送方发通知
     await this.notifications.createSafe({
-      userId: p.sender_id,
+      userId: senderId,
       type: 'red_packet',
       title: '红包已被领取',
       content: `你的 ¥${(amount / 100).toFixed(2)} 红包已被对方领取。`,
@@ -154,6 +198,113 @@ export class RedPacketService {
     });
 
     return { amountYuan: (amount / 100).toFixed(2) };
+  }
+
+  /**
+   * 扫描并退回所有「已过期但仍为 open」的红包。
+   *
+   * 由定时任务周期性调用。每个红包单独事务：
+   * 1. FOR UPDATE 锁定红包行，复查 status 仍为 open（多实例/重复执行时只有一个能成功）；
+   * 2. 应退金额 = 红包总额 - 已被领取金额（单红包未领时即为全额；
+   *    未来群红包部分领取时退未领部分）；
+   * 3. 锁定发送方余额行加回退款，写 red_packet_refund 流水；
+   * 4. 红包状态置为 expired。
+   *
+   * 返回本次扫描处理的红包数与退款总额。
+   */
+  async refundExpiredPackets(): Promise<{ scanned: number; refunded: number; refundCents: number }> {
+    const rows = await this.dataSource.query(
+      `SELECT id FROM red_packets
+       WHERE status = 'open' AND expired_at <= NOW()
+       ORDER BY expired_at ASC
+       LIMIT ?`,
+      [EXPIRED_SCAN_BATCH],
+    );
+    const ids = (rows as Array<{ id: string }>).map((r) => r.id);
+
+    let refunded = 0;
+    let refundCentsTotal = 0;
+
+    for (const packetId of ids) {
+      let refundCents = 0;
+      let senderId = '';
+      try {
+        await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+          const packets = (await manager.query(
+            `SELECT * FROM red_packets WHERE id = ? FOR UPDATE`,
+            [packetId],
+          )) as RedPacketRow[];
+          const p = packets[0];
+
+          // 行锁拿到后再复查：可能已被领取（done）或被其它实例退款（expired）。
+          if (!p || p.status !== 'open') return;
+
+          const total = Number(p.total_cents);
+          const received = Number(p.received_cents ?? 0);
+          refundCents = total - received;
+          senderId = p.sender_id;
+
+          if (refundCents > 0) {
+            const bal = await manager.findOne(UserBalanceEntity, {
+              where: { userId: p.sender_id },
+              lock: { mode: 'pessimistic_write' },
+            });
+            // 发红包时一定存在余额行；不存在属于异常数据，记录并跳过，不误置状态。
+            if (!bal) {
+              throw new Error(`发送方余额记录不存在，无法退回红包 ${packetId}`);
+            }
+            const after = Number(bal.balanceCents) + refundCents;
+            bal.balanceCents = String(after);
+            bal.version += 1;
+            await manager.save(bal);
+
+            const txnNo = this.paymentNo.nextTxnNo('red_packet_refund');
+            await manager.save(BalanceTransactionEntity, {
+              id: txnNo,
+              txnNo,
+              userId: p.sender_id,
+              type: 'red_packet_refund',
+              amountCents: String(refundCents),
+              balanceAfterCents: String(after),
+              refType: 'red_packet',
+              refId: packetId,
+              note: '红包过期未领，原路退回',
+            });
+          }
+
+          await manager.query(
+            `UPDATE red_packets SET status = 'expired' WHERE id = ?`,
+            [packetId],
+          );
+        });
+      } catch (error) {
+        // 单个红包退款失败不阻断整批扫描，下个周期会再次捞到（仍是 open）。
+        this.logger.error(
+          `过期红包退款失败 packetId=${packetId}：${(error as Error)?.message ?? String(error)}`,
+        );
+        continue;
+      }
+
+      if (refundCents > 0) {
+        refunded += 1;
+        refundCentsTotal += refundCents;
+        await this.notifications.createSafe({
+          userId: senderId,
+          type: 'red_packet',
+          title: '红包已过期退回',
+          content: `你发出的 ¥${(refundCents / 100).toFixed(2)} 红包超过 24 小时未被领取，已退回你的余额。`,
+          bizType: 'red_packet',
+          bizId: packetId,
+        });
+      }
+    }
+
+    if (ids.length > 0) {
+      this.logger.log(
+        `过期红包扫描完成：共 ${ids.length} 个，退款 ${refunded} 个，合计 ¥${(refundCentsTotal / 100).toFixed(2)}`,
+      );
+    }
+    return { scanned: ids.length, refunded, refundCents: refundCentsTotal };
   }
 
   /** 待领取的红包（发给我但还没领） */

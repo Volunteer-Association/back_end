@@ -309,8 +309,11 @@ const allTimeRows = computed(() => {
     { label: '转入', cents: a.transferInSumCents },
     { label: '退款', cents: a.refundSumCents },
     { label: '调整', cents: a.adjustSumCents },
-    { label: '提现', cents: (a as any).withdrawOutSumCents ?? 0 },
-    { label: '提现退回', cents: (a as any).withdrawRefundSumCents ?? 0 },
+    { label: '提现', cents: a.withdrawOutSumCents },
+    { label: '提现退回', cents: a.withdrawRefundSumCents },
+    { label: '发红包', cents: a.redPacketOutSumCents },
+    { label: '收红包', cents: a.redPacketInSumCents },
+    { label: '红包过期退回', cents: a.redPacketRefundSumCents },
   ]
 })
 

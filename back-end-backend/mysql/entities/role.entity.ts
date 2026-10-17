@@ -34,6 +34,14 @@ export class RoleEntity {
   })
   description: string | null;
 
+  @Column({
+    name: 'sort_order',
+    type: 'int',
+    default: 0,
+    comment: '排序值，越小越靠前；角色管理中可调整',
+  })
+  sortOrder: number;
+
   @ManyToMany(() => UserEntity, (user) => user.roles)
   users: UserEntity[];
 

@@ -22,11 +22,11 @@
 | --- | --- |
 | 认证与会话 | 邮箱验证码注册、本地账号登录、短期 Access Token 与 HttpOnly Refresh Token；支持账号状态检查、会话撤销和多设备登录设置。 |
 | 第三方账号 | Gitee/GitHub OAuth 登录与已登录账号绑定；授权状态一次性校验，第三方密钥只保存在后端。 |
-| 用户资料与权限 | 独立的”个人资料”页面管理昵称、手机号和性别；RBAC 角色体系（user / admin / super_admin），支持角色管理和用户管理。 |
+| 用户资料与权限 | 独立的”个人资料”页面管理昵称、手机号和性别；RBAC 角色体系（user / admin / super_admin），支持角色管理、自定义角色、角色排序和用户管理。 |
 | 账单管理 | 记录个人收入与支出，支持分类（数据字典驱动）、日期筛选、月度收支汇总。 |
 | 钱包与余额 | 所有金额以”分”为单位存储，事务 + 悲观行锁保证并发安全；支持充值申请（管理员审核）、用户间转账、退款、管理员手工调整，每笔变动写流水可对账。 |
 | 支付密码 | 独立于登录密码的 6 位数字支付密码，转账、发红包、提现前必须验证。 |
-| 红包 | 用户间发送红包，接收后实时到账。 |
+| 红包 | 用户间发送红包（24 小时有效），接收后实时到账；超时未领由后端定时任务自动退回发送方余额并写退款流水。 |
 | 提现 | 绑定银行卡、申请提现，管理员审核后打款；风控限额控制单笔/日累计。 |
 | 风控规则 | 数据库可配置的转账单笔上限、日累计上限、提现限额等，管理员可在线调整。 |
 | 对账 | 钱包总余额 vs 流水加总自动核对，支持按用户、按日期、按时间段排查差异。 |
@@ -248,6 +248,10 @@ npm run start:dev
 账号绑定启动接口使用已登录 JWT，并通过限定回调路径的 HttpOnly state Cookie 绑定浏览器流程；跨域部署需将前端来源加入 `CORS_ORIGINS`，并保持浏览器可接收该 Cookie。建议前后端使用同站点部署或由反向代理统一入口。第三方应用登记的 Callback URL 必须与对应 `OAUTH_GITEE_CALLBACK_URL` / `OAUTH_GITHUB_CALLBACK_URL` 完全一致。
 
 已初始化的数据库部署单设备会话失效功能前，需先执行一次 `back-end-backend/mysql/migrations/20261015_add_session_version.sql` 添加 `pms_user.session_version`。该迁移会清除升级前的 Refresh Token，用户需要重新登录；新数据库已由 `mysql/init.sql` 创建该字段。
+
+已初始化的数据库启用红包过期自动退款前，需执行 `back-end-backend/mysql/migrations/20261017_add_red_packet_refund.sql`：为 `balance_transactions.type` 增加 `red_packet_refund` 枚举，并为 `red_packets` 增加 `(status, expired_at)` 扫描索引；新数据库已由 `mysql/init.sql` 包含。升级后，红包 24 小时未被领取时，由后端定时任务（每分钟扫描，见 `RedPacketScheduler`）在事务内加行锁把未领金额退回发送方、写 `red_packet_refund` 流水并把红包置为 `expired`；多实例部署下行锁与状态复查保证同一红包只退一次。
+
+已初始化的数据库启用角色排序前，需执行 `back-end-backend/mysql/migrations/20261017_add_role_sort_order.sql`：为 `roles` 增加 `sort_order` 列（用现有 `id` 初始化顺序）并加排序索引；新数据库已由 `mysql/init.sql` 包含。升级后角色列表与用户管理页的角色下拉按 `sort_order` 排序，超管可在角色管理页通过上移/下移调整顺序（`PUT /admin/users/roles/sort`）。
 
 迁移前请确认数据库当前结构和已执行过的脚本，先备份，再按迁移说明顺序执行。`20261014_reset_auth_schema.sql` 会删除指定认证及业务表数据，仅适用于明确要重置数据的场景；不要把它作为常规升级脚本执行。
 

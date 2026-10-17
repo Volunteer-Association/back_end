@@ -4,7 +4,7 @@
       <template #header>
         <div>
           <h1>角色管理</h1>
-          <p>新增、删除角色。内置 user/admin/super_admin 不可删除。</p>
+          <p>新增、删除、排序角色。内置 user/admin/super_admin 不可删除。</p>
         </div>
       </template>
       <el-table :data="list" stripe v-loading="loading">
@@ -13,7 +13,23 @@
         </el-table-column>
         <el-table-column label="名称" prop="name" width="160" />
         <el-table-column label="说明" prop="description" />
-        <el-table-column label="操作" width="180">
+        <el-table-column label="排序" width="120" align="center">
+          <template #default="{ $index }">
+            <el-button
+              size="small"
+              link
+              :disabled="saving || $index === 0"
+              @click="move($index, -1)"
+            >上移</el-button>
+            <el-button
+              size="small"
+              link
+              :disabled="saving || $index === list.length - 1"
+              @click="move($index, 1)"
+            >下移</el-button>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <el-button size="small" @click="edit(row)">编辑</el-button>
             <el-button v-if="!builtinKeys.includes(row.key)" type="danger" size="small" @click="del(row)">删除</el-button>
@@ -46,7 +62,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listAllRoles, createRole, deleteRole, updateRole } from '@/api/modules/admin-users'
+import { listAllRoles, createRole, deleteRole, updateRole, reorderRoles } from '@/api/modules/admin-users'
 
 const builtinKeys = ['user', 'admin', 'super_admin']
 const loading = ref(false)
@@ -62,6 +78,30 @@ async function load() {
     list.value = await listAllRoles()
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * 上移 / 下移：交换相邻两行并提交完整的有序 key 列表到后端。
+ * 先乐观更新本地顺序，接口失败时重新拉取以回滚。
+ */
+async function move(index: number, dir: -1 | 1) {
+  const target = index + dir
+  if (target < 0 || target >= list.value.length) return
+  const keys = list.value.map((r) => r.key)
+  ;[keys[index], keys[target]] = [keys[target], keys[index]]
+  const items = [...list.value]
+  ;[items[index], items[target]] = [items[target], items[index]]
+  list.value = items
+  saving.value = true
+  try {
+    await reorderRoles(keys)
+    ElMessage.success('排序已更新')
+  } catch (e: any) {
+    ElMessage.error(e?.response?.data?.message || '排序失败')
+    await load()
+  } finally {
+    saving.value = false
   }
 }
 

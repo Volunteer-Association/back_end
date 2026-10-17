@@ -1079,7 +1079,7 @@ export class PaymentsService {
       return { cents, big: BigInt(cents) };
     };
 
-    const [recharge, consume, transferOut, transferIn, refund, adjust, withdrawOut, withdrawRefund] =
+    const [recharge, consume, transferOut, transferIn, refund, adjust, withdrawOut, withdrawRefund, redPacketOut, redPacketIn, redPacketRefund] =
       await Promise.all([
         sumByType('recharge'),
         sumByType('consume'),
@@ -1089,10 +1089,16 @@ export class PaymentsService {
         sumByType('adjust'),
         sumByType('withdraw_out'),
         sumByType('withdraw_refund'),
+        sumByType('red_packet_out'),
+        sumByType('red_packet_in'),
+        sumByType('red_packet_refund'),
       ]);
+    // 红包三类净额恒为 0（出款负 + 领取正 + 过期退回正），纳入求和不影响平衡，
+    // 但能保证账本全类型覆盖，未来新增红包玩法也不会遗漏。
     const ledgerSum =
       recharge.big + consume.big + transferOut.big + transferIn.big + refund.big + adjust.big
-      + withdrawOut.big + withdrawRefund.big;
+      + withdrawOut.big + withdrawRefund.big
+      + redPacketOut.big + redPacketIn.big + redPacketRefund.big;
     const diff = totalBalanceCents - ledgerSum;
 
     return {
@@ -1114,6 +1120,9 @@ export class PaymentsService {
         adjustSumCents: adjust.cents,
         withdrawOutSumCents: withdrawOut.cents,
         withdrawRefundSumCents: withdrawRefund.cents,
+        redPacketOutSumCents: redPacketOut.cents,
+        redPacketInSumCents: redPacketIn.cents,
+        redPacketRefundSumCents: redPacketRefund.cents,
       },
       userCount: Number(countRow?.c ?? 0),
     };

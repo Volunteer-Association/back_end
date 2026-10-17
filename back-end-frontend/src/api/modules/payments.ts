@@ -9,6 +9,11 @@ export type BalanceTxnType =
   | 'transfer_out'
   | 'transfer_in'
   | 'adjust'
+  | 'withdraw_out'
+  | 'withdraw_refund'
+  | 'red_packet_out'
+  | 'red_packet_in'
+  | 'red_packet_refund'
 
 export interface BalanceInfo {
   balanceCents: number
@@ -231,6 +236,11 @@ export interface ReconcileReport {
     transferInSumCents: string
     refundSumCents: string
     adjustSumCents: string
+    withdrawOutSumCents: string
+    withdrawRefundSumCents: string
+    redPacketOutSumCents: string
+    redPacketInSumCents: string
+    redPacketRefundSumCents: string
   }
   userCount: number
 }
