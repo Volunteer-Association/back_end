@@ -126,7 +126,7 @@ export class AdminUsersController {
   async kycPending(@Req() req: Request & { user?: { sub: string; roles?: string[] } }) {
     this.requireAdmin(req);
     const rows = await this.dataSource.query(
-      `SELECT u.user_id, p.login_name AS username, u.real_name, u.id_number, u.id_type_label, u.created_at
+      `SELECT u.user_id, p.login_name AS username, u.real_name, u.id_type, u.id_number, u.id_type_label, u.created_at
        FROM users u JOIN pms_user p ON p.user_id = u.user_id
        WHERE u.verify_status = 1 ORDER BY u.created_at ASC`,
     );

@@ -99,8 +99,11 @@
             <p v-else class="kyc-desc">
               实名认证后才能使用转账、提现等功能。请填写真实姓名和证件号码。
             </p>
-            <el-button v-if="kyc.status === 0 || kyc.status === 3" size="small" type="primary" @click="kycDialog = true">
+            <el-button v-if="kyc.status === 0 || kyc.status === 3" size="small" type="primary" @click="openKycDialog">
               {{ kyc.status === 3 ? '重新提交' : '立即认证' }}
+            </el-button>
+            <el-button v-if="kyc.status === 2" size="small" type="warning" plain @click="openKycDialog">
+              变更实名信息
             </el-button>
           </div>
           <div class="action-row">
@@ -167,19 +170,23 @@
 
           <el-divider content-position="left">证件信息</el-divider>
 
-          <el-form-item label="证件类型">
-            <el-select v-model="profile.idType" class="full-width" placeholder="请选择证件类型">
-              <el-option v-for="t in idTypes" :key="t.value" :label="t.label" :value="t.value" />
-            </el-select>
-          </el-form-item>
-
-          <el-form-item label="证件号码">
-            <el-input
-              v-model.trim="profile.idNumber"
-              maxlength="50"
-              placeholder="请输入证件号码"
-            />
-          </el-form-item>
+          <el-alert
+            type="warning"
+            :closable="false"
+            class="kyc-edit-notice"
+            title="证件类型、证件号码与真实姓名属于实名信息，不能在此直接修改。"
+            description="如需新增或变更，请通过下方“实名认证”提交，由管理员审核后生效。"
+          >
+            <el-button
+              size="small"
+              type="primary"
+              plain
+              :disabled="kyc.status === 1"
+              @click="openKycDialog"
+            >
+              {{ kyc.status === 2 ? '变更实名信息' : '去实名认证' }}
+            </el-button>
+          </el-alert>
 
           <el-form-item label="联系地址">
             <el-input
@@ -206,14 +213,26 @@
       @success="onCropped"
     />
 
-    <el-dialog v-model="kycDialog" title="实名认证" width="420px">
-      <el-alert type="info" :closable="false" title="请填写与证件一致的真实信息，提交后由管理员审核。" style="margin-bottom: 16px" />
+    <el-dialog v-model="kycDialog" :title="kycDialogTitle" width="420px">
+      <el-alert
+        type="info"
+        :closable="false"
+        :title="kyc.status === 2
+          ? '变更实名信息将重新进入管理员审核，审核通过前以新提交信息为准。'
+          : '请填写与证件一致的真实信息，提交后由管理员审核。'"
+        style="margin-bottom: 16px"
+      />
       <el-form label-width="80px">
         <el-form-item label="真实姓名">
-          <el-input v-model="kycForm.realName" placeholder="请输入真实姓名" maxlength="20" />
+          <el-input v-model="kycForm.realName" placeholder="请输入真实姓名" maxlength="50" />
+        </el-form-item>
+        <el-form-item label="证件类型">
+          <el-select v-model="kycForm.idType" class="full-width" placeholder="请选择证件类型">
+            <el-option v-for="t in idTypes" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
         </el-form-item>
         <el-form-item label="证件号码">
-          <el-input v-model="kycForm.idNumber" placeholder="请输入身份证号" maxlength="18" />
+          <el-input v-model="kycForm.idNumber" placeholder="请输入证件号码" maxlength="50" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -312,10 +331,14 @@ function roleTagType(r: string): 'danger' | 'warning' | 'primary' {
 }
 
 // ===== KYC =====
-const kyc = ref<KycStatus>({ status: 0, realName: null, verifiedAt: null, rejectReason: null, idNumber: null, idTypeLabel: null })
+const kyc = ref<KycStatus>({ status: 0, realName: null, verifiedAt: null, rejectReason: null, idNumber: null, idType: null, idTypeLabel: null })
 const kycDialog = ref(false)
-const kycForm = reactive({ realName: '', idNumber: '' })
+const kycForm = reactive({ realName: '', idType: null as number | null, idNumber: '' })
 const kycSubmitting = ref(false)
+
+const kycDialogTitle = computed(() =>
+  kyc.value.status === 2 ? '变更实名信息' : '实名认证',
+)
 
 const kycStatusClass = computed(() => {
   if (kyc.value.status === 2) return 'ok'
@@ -323,6 +346,18 @@ const kycStatusClass = computed(() => {
   if (kyc.value.status === 3) return 'rejected'
   return ''
 })
+
+/** 打开实名弹窗：已拒绝/已认证时预填上次提交的内容，便于修改。 */
+function openKycDialog() {
+  if (kyc.value.status === 1) {
+    ElMessage.warning('实名审核中，请耐心等待')
+    return
+  }
+  kycForm.realName = kyc.value.realName || ''
+  kycForm.idType = kyc.value.idType ?? null
+  kycForm.idNumber = kyc.value.idNumber || ''
+  kycDialog.value = true
+}
 
 function maskIdNumber(v: string | null): string {
   if (!v) return ''
@@ -337,16 +372,29 @@ async function loadKyc() {
 }
 
 async function onSubmitKyc() {
-  if (!kycForm.realName.trim() || !kycForm.idNumber.trim()) {
-    ElMessage.warning('请填写真实姓名和证件号码')
+  if (!kycForm.realName.trim()) {
+    ElMessage.warning('请填写真实姓名')
+    return
+  }
+  if (kycForm.idType === null) {
+    ElMessage.warning('请选择证件类型')
+    return
+  }
+  if (!kycForm.idNumber.trim()) {
+    ElMessage.warning('请填写证件号码')
     return
   }
   kycSubmitting.value = true
   try {
-    await submitKyc({ realName: kycForm.realName.trim(), idNumber: kycForm.idNumber.trim() })
-    ElMessage.success('实名申请已提交')
+    const res = await submitKyc({
+      realName: kycForm.realName.trim(),
+      idType: kycForm.idType,
+      idNumber: kycForm.idNumber.trim(),
+    })
+    ElMessage.success(res.message || '实名申请已提交')
     kycDialog.value = false
     kycForm.realName = ''
+    kycForm.idType = null
     kycForm.idNumber = ''
     await loadKyc()
   } catch (e) {
@@ -490,8 +538,6 @@ async function saveProfile() {
       emailCode: emailChanged.value ? emailCode.value : undefined,
       mobile: profile.mobile || null,
       sex: profile.sex,
-      idType: profile.idType,
-      idNumber: profile.idNumber || null,
       address: profile.address || null,
     })
     profile.email = updated.email
@@ -668,4 +714,6 @@ async function loadOptions() {
 .kyc-title { font-weight: 600; }
 .kyc-desc { color: #606266; font-size: 13px; margin: 8px 0; }
 .kyc-desc.danger { color: #f56c6c; }
+.kyc-edit-notice { margin-bottom: 18px; }
+.kyc-edit-notice :deep(.el-alert__content) { display: grid; gap: 8px; }
 </style>

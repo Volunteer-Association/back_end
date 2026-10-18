@@ -166,7 +166,10 @@ export function getUserProfile() {
   return request.get<UserProfile>('/auth/profile')
 }
 
-/** 更新当前用户允许编辑的个人资料字段。 */
+/**
+ * 更新当前用户允许编辑的个人资料字段。
+ * 证件三要素（真实姓名/证件类型/证件号码）不在此处，须走实名认证 submitKyc。
+ */
 export function updateUserProfile(data: {
   nickname?: string | null
   email?: string
@@ -174,8 +177,6 @@ export function updateUserProfile(data: {
   mobile?: string | null
   sex?: number
   avatar?: string | null
-  idType?: number | null
-  idNumber?: string | null
   address?: string | null
 }) {
   return request.patch<UserProfile>('/auth/profile', data)
@@ -221,6 +222,7 @@ export interface KycStatus {
   verifiedAt: string | null
   rejectReason: string | null
   idNumber: string | null
+  idType: number | null
   idTypeLabel: string | null
 }
 
@@ -228,7 +230,11 @@ export function getKycStatus() {
   return request.get<KycStatus>('/auth/kyc/status')
 }
 
-export function submitKyc(data: { realName: string; idNumber: string }) {
+export function submitKyc(data: {
+  realName: string
+  idType: number
+  idNumber: string
+}) {
   return request.post<{ ok: boolean; message: string }>('/auth/kyc/submit', data)
 }
 

@@ -20,7 +20,7 @@ import { AuthGuard } from '../../guards/auth.guard.js';
 import { LoggingService } from '../logging/logging.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PaymentsService } from './payments.service.js';
-import { AdminAdjustDto } from './dto/payments.dto.js';
+import { AdminAdjustDto, ReconcileFixDto } from './dto/payments.dto.js';
 
 @ApiTags('钱包-管理员')
 @ApiBearerAuth()
@@ -143,6 +143,62 @@ export class AdminWalletController {
       bizType: 'admin_adjust',
       bizId: result.id,
     });
+    return result;
+  }
+
+  @Post('reconcile-fix')
+  @ApiOperation({
+    summary: '逐用户对账修复（单边操作，区别于普通余额调整）',
+    description:
+      'balance=以流水为准，只修正余额表（不产生新流水，推荐）；'
+      + 'ledger=以余额为准，只补一笔差额流水（余额不变）。金额由服务端按当前账实计算。',
+  })
+  async reconcileFix(
+    @Req() req: Request & { user?: Record<string, unknown> },
+    @Body() dto: ReconcileFixDto,
+  ) {
+    this.assertAdmin(req);
+    const adminId = String(req.user!.sub);
+    const mode = dto.mode ?? 'balance';
+    const result = await this.payments.adminReconcileFix({
+      adminId,
+      targetUserId: dto.targetUserId,
+      mode,
+      note: dto.note,
+    });
+
+    if (result.noop) {
+      return { ...result, message: '该用户账实已平衡，无需修复' };
+    }
+
+    await this.logging.audit({
+      level: 'warn',
+      category: 'event',
+      message:
+        `对账修复：用户 ${dto.targetUserId}，方式 ${mode === 'balance' ? '以流水为准修正余额' : '以余额为准补流水'}，` +
+        `修正 ${result.changedCents} 分，余额 ${result.balanceCents}，流水加总 ${result.txnSumCents}` +
+        (dto.note?.trim() ? `；备注：${dto.note.trim()}` : ''),
+      userId: adminId,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    // 仅当确实改了余额才通知用户；纯补流水不动余额，避免误导
+    if (mode === 'balance' && result.changedCents !== 0) {
+      const afterText = `¥${(result.balanceCents / 100).toFixed(2)}`;
+      const changed = `¥${Math.abs(result.changedCents / 100).toFixed(2)}`;
+      await this.notifications.createSafe({
+        userId: dto.targetUserId,
+        type: 'balance_adjusted',
+        title: '余额对账修正通知',
+        content:
+          `系统对账后已将您的账户余额修正为 ${afterText}（差额 ${changed}）。` +
+          (dto.note?.trim() ? ` 备注：${dto.note.trim()}` : ''),
+        bizType: 'reconcile_fix',
+        bizId: dto.targetUserId,
+      });
+    }
+
     return result;
   }
 

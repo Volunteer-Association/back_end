@@ -134,6 +134,7 @@
         <el-table-column label="说明" min-width="180">
           <template #default="{ row }">
             <span v-if="row.status === 2 || row.status === 3" class="review-reject">{{ row.rejectReason || '—' }}</span>
+            <span v-else-if="row.status === 1" class="review-approve">打款成功，请注意查收</span>
             <span v-else class="muted">等待管理员审核打款</span>
           </template>
         </el-table-column>
@@ -346,7 +347,7 @@
     <!-- 提现弹窗 -->
     <el-dialog v-model="wd.visible" title="提现到银行卡" width="480px">
       <el-alert type="info" :closable="false" style="margin-bottom: 12px"
-        :title="`提现手续费 0.1%（最低1元），单笔 ${paymentOptions.riskLimits.withdrawSingleMinYuan}元~${paymentOptions.riskLimits.withdrawSingleMaxYuan}元。提交后管理员审核打款。`" />
+        :title="`提现手续费按 0.10% 实时计算（无最低手续费），单笔 ${paymentOptions.riskLimits.withdrawSingleMinYuan}元~${paymentOptions.riskLimits.withdrawSingleMaxYuan}元。提交后管理员审核打款。`" />
       <el-form label-width="100px">
         <el-form-item label="选择银行卡">
           <el-select v-model="wd.cardId" placeholder="选择银行卡" style="width:100%">
@@ -363,10 +364,23 @@
           <el-button size="small" @click="saveNewCard">保存卡片</el-button>
         </template>
         <el-form-item label="提现金额">
-          <el-input v-model="wd.amount" placeholder="元">
+          <el-input v-model="wd.amount" placeholder="元" @input="onWdAmountInput">
             <template #append>元</template>
           </el-input>
         </el-form-item>
+        <!-- 手续费实时计算：申请金额 × 0.10%，到账 = 申请金额 - 手续费 -->
+        <div class="fee-preview" v-if="wdPreview.valid">
+          <div class="fee-row">
+            <span>申请金额</span><span>¥{{ centsToYuan(wdPreview.amountCents) }}</span>
+          </div>
+          <div class="fee-row">
+            <span>手续费（{{ feePercent }}）</span>
+            <span class="fee-amount">-¥{{ centsToYuan(wdPreview.feeCents) }}</span>
+          </div>
+          <div class="fee-row total">
+            <span>预计到账</span><span class="actual-amount">¥{{ centsToYuan(wdPreview.actualCents) }}</span>
+          </div>
+        </div>
         <el-form-item label="支付密码">
           <el-input v-model="wd.pwd" type="password" show-password placeholder="6位数字支付密码"
             maxlength="6" oninput="this.value=this.value.replace(/\D/g,'')" />
@@ -415,7 +429,7 @@
  * - 申请充值对话框（提交后等待管理员审核）
  * - 转账对话框（输入对方邮箱，即时到账，带幂等键防重复扣款）
  */
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
@@ -439,6 +453,8 @@ import {
   myPendingPackets,
   receiveRedPacket,
   monthlySummary,
+  calcWithdrawPreview,
+  centsToYuan,
   WITHDRAWAL_STATUS_META,
   type BalanceInfo,
   type RechargeChannel,
@@ -493,6 +509,26 @@ function openWithdraw() {
   loadCards()
 }
 
+/** 提现金额输入：仅允许数字与最多两位小数，避免出现负号、多位小数。 */
+function onWdAmountInput(val: string) {
+  let v = val.replace(/[^\d.]/g, '')
+  const firstDot = v.indexOf('.')
+  if (firstDot !== -1) {
+    v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '')
+    v = v.replace(/^(\d*\.\d{0,2}).*$/, '$1')
+  }
+  wd.amount = v
+}
+
+/** 手续费实时预估（与后端同口径，最终以后端入账为准）。 */
+const wdPreview = computed(() =>
+  calcWithdrawPreview(wd.amount, paymentOptions.value.withdrawFeeRate),
+)
+/** 费率展示文案，0.001 → "0.10%"。 */
+const feePercent = computed(() =>
+  `${(paymentOptions.value.withdrawFeeRate * 100).toFixed(2)}%`,
+)
+
 async function saveNewCard() {
   try {
     await addBankCard(wd.newCard)
@@ -519,7 +555,15 @@ async function delCard(id: number) {
 
 async function submitWithdraw() {
   if (!wd.cardId) return ElMessage.warning('请选择银行卡')
-  if (!wd.amount) return ElMessage.warning('请输入金额')
+  if (!wd.amount || !wdPreview.value.valid) return ElMessage.warning('请输入正确的提现金额')
+  const { withdrawSingleMinYuan, withdrawSingleMaxYuan } = paymentOptions.value.riskLimits
+  const amountYuan = Number(wd.amount)
+  if (amountYuan < withdrawSingleMinYuan) {
+    return ElMessage.warning(`单笔最低提现 ${withdrawSingleMinYuan} 元`)
+  }
+  if (amountYuan > withdrawSingleMaxYuan) {
+    return ElMessage.warning(`单笔最高提现 ${withdrawSingleMaxYuan} 元`)
+  }
   if (!wd.pwd) return ElMessage.warning('请输入支付密码')
   wd.submitting = true
   try {
@@ -617,6 +661,7 @@ const paymentOptions = ref<{
   rechargeStatuses: { value: string; label: string }[]
   rechargeChannels: { value: string; label: string }[]
   txnTypes: { value: string; label: string }[]
+  withdrawFeeRate: number
   riskLimits: {
     transferSingleMaxYuan: number
     transferDailyMaxYuan: number
@@ -624,7 +669,7 @@ const paymentOptions = ref<{
     withdrawSingleMaxYuan: number
     redpacketSingleMaxYuan: number
   }
-}>({ rechargeStatuses: [], rechargeChannels: [], txnTypes: [], riskLimits: {
+}>({ rechargeStatuses: [], rechargeChannels: [], txnTypes: [], withdrawFeeRate: 0.001, riskLimits: {
   transferSingleMaxYuan: 10000, transferDailyMaxYuan: 50000,
   withdrawSingleMinYuan: 1, withdrawSingleMaxYuan: 50000,
   redpacketSingleMaxYuan: 2000,
@@ -861,6 +906,37 @@ onMounted(async () => {
 
 .review-reject {
   color: #e05b5b;
+}
+
+/* 提现手续费实时预估面板 */
+.fee-preview {
+  margin: -4px 0 16px 100px;
+  padding: 10px 14px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border: 1px solid #ebeef5;
+}
+.fee-preview .fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  color: #606266;
+  padding: 3px 0;
+}
+.fee-preview .fee-row .fee-amount {
+  color: #e6a23c;
+}
+.fee-preview .fee-row.total {
+  border-top: 1px dashed #dcdfe6;
+  margin-top: 4px;
+  padding-top: 8px;
+  font-weight: 600;
+  color: #303133;
+}
+.fee-preview .actual-amount {
+  color: #22a06b;
+  font-size: 15px;
 }
 
 .review-time {

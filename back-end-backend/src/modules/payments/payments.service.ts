@@ -880,6 +880,126 @@ export class PaymentsService {
   }
 
   /**
+   * 对账修复（单边操作，这是和 adminAdjust 的关键区别）。
+   *
+   * 恒等式：余额表余额 == 流水 amount 加总；diff = 余额表 - 流水加总。
+   * 普通「余额调整」(adminAdjust) 同时改余额和流水，diff 不变，无法修复对账；
+   * 对账修复必须只动一边：
+   *  - mode='balance'（以流水为准，推荐）：流水是真实资金轨迹，直接把余额表修正为
+   *    流水加总，不产生新流水；
+   *  - mode='ledger'（以余额为准）：确认余额表正确、只是漏记了流水时，补一笔
+   *    amount=diff 的 adjust 流水，余额保持不变。
+   * 金额一律由服务端按当前账实重新计算，不接受前端传入的金额。
+   */
+  async adminReconcileFix(params: {
+    adminId: string;
+    targetUserId: string;
+    mode: 'balance' | 'ledger';
+    note?: string | null;
+  }): Promise<{
+    noop: boolean;
+    mode: 'balance' | 'ledger';
+    balanceCents: number;
+    txnSumCents: number;
+    diffCents: number;
+    beforeBalanceCents: number;
+    changedCents: number;
+    txnId: string | null;
+  }> {
+    const target = await this.profiles.findOne({ where: { userId: params.targetUserId } });
+    if (!target) throw new NotFoundException('目标用户不存在');
+
+    return this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      // 锁定该用户余额行，同时锁定其流水，防止修复期间有新交易写入
+      let balance = await manager.findOne(UserBalanceEntity, {
+        where: { userId: params.targetUserId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const sumRows = await manager.query(
+        `SELECT COALESCE(SUM(amount_cents), 0) AS s
+         FROM balance_transactions WHERE user_id = ? FOR UPDATE`,
+        [params.targetUserId],
+      );
+      const txnSumCents = Number(sumRows[0]?.s ?? 0);
+      const beforeBalanceCents = balance ? Number(balance.balanceCents) : 0;
+      const diffCents = beforeBalanceCents - txnSumCents;
+
+      if (diffCents === 0) {
+        return {
+          noop: true,
+          mode: params.mode,
+          balanceCents: beforeBalanceCents,
+          txnSumCents,
+          diffCents: 0,
+          beforeBalanceCents,
+          changedCents: 0,
+          txnId: null,
+        };
+      }
+
+      if (params.mode === 'balance') {
+        // 以流水为准：只修正余额表，不写流水
+        if (balance) {
+          balance.balanceCents = String(txnSumCents);
+          balance.version += 1;
+        } else {
+          balance = manager.create(UserBalanceEntity, {
+            userId: params.targetUserId,
+            balanceCents: String(txnSumCents),
+            version: 0,
+          });
+        }
+        await manager.save(balance);
+        return {
+          noop: false,
+          mode: 'balance',
+          balanceCents: txnSumCents,
+          txnSumCents,
+          diffCents: 0,
+          beforeBalanceCents,
+          changedCents: txnSumCents - beforeBalanceCents,
+          txnId: null,
+        };
+      }
+
+      // 以余额为准：只补一笔流水，余额保持不变
+      if (!balance) {
+        balance = manager.create(UserBalanceEntity, {
+          userId: params.targetUserId,
+          balanceCents: '0',
+          version: 0,
+        });
+        await manager.save(balance);
+      }
+      const txn = await manager.save(
+        manager.create(BalanceTransactionEntity, {
+          id: await this.idGenerator.nextId(),
+          txnNo: this.paymentNo.nextTxnNo('adjust'),
+          userId: params.targetUserId,
+          type: 'adjust',
+          amountCents: String(diffCents),
+          balanceAfterCents: String(beforeBalanceCents),
+          refType: 'reconcile_fix',
+          refId: params.adminId,
+          note: params.note?.trim()
+            ? `对账补流水：${params.note.trim()}`
+            : '对账补流水：以余额为准补录',
+        }),
+      );
+      return {
+        noop: false,
+        mode: 'ledger',
+        balanceCents: beforeBalanceCents,
+        txnSumCents: txnSumCents + diffCents,
+        diffCents: 0,
+        beforeBalanceCents,
+        changedCents: diffCents,
+        txnId: txn.id,
+      };
+    });
+  }
+
+  /**
    * 逐用户对账排查：找出每个用户的「余额表余额」vs「流水加总」差异。
    * 差异不为 0 的用户就是问题所在，直接定位到具体用户。
    */

@@ -15,9 +15,17 @@ import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { RiskService } from './risk.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
-/** 提现费率：每笔收 0.1%，最低 1 元（100 分） */
-const WITHDRAW_FEE_RATE = 0.001;
-const WITHDRAW_FEE_MIN = 100;
+/** 提现手续费费率：0.10%（按申请金额实时计算，无最低手续费）。 */
+export const WITHDRAW_FEE_RATE = 0.001;
+/**
+ * 计算提现手续费（单位：分）。
+ * 手续费 = 申请金额 × 0.10%，四舍五入到分；金额很小时手续费可能为 0。
+ * 后端以此为准入账，前端按同一口径实时预估。
+ */
+export function calcWithdrawFee(amountCents: number): number {
+  if (!Number.isFinite(amountCents) || amountCents <= 0) return 0;
+  return Math.round(amountCents * WITHDRAW_FEE_RATE);
+}
 const WITHDRAW_MIN = 100;       // 1 元
 const WITHDRAW_MAX = 5_000_000; // 5 万
 /** 单次超时扫描最多处理的提现单数，避免一次性长事务。 */
@@ -126,7 +134,8 @@ export class WithdrawService {
     const ok = await bcrypt.compare(body.paymentPassword, ph.payment_password_hash);
     if (!ok) throw new BadRequestException('支付密码错误');
 
-    const fee = Math.max(Math.round(amountCents * WITHDRAW_FEE_RATE), WITHDRAW_FEE_MIN);
+    // 手续费按 0.10% 实时计算（四舍五入到分，无最低手续费）
+    const fee = calcWithdrawFee(amountCents);
     const actual = amountCents - fee;
 
     const orderId = this.paymentNo.nextWithdrawNo();

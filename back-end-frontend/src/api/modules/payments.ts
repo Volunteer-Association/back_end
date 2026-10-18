@@ -140,6 +140,8 @@ export function getPaymentsOptions() {
     rechargeStatuses: DictOption[]
     rechargeChannels: DictOption[]
     txnTypes: DictOption[]
+    /** 提现手续费费率：0.10% = 0.001，前端按此实时预估，最终以后端入账为准 */
+    withdrawFeeRate: number
     riskLimits: {
       transferSingleMaxYuan: number
       transferDailyMaxYuan: number
@@ -148,6 +150,33 @@ export function getPaymentsOptions() {
       redpacketSingleMaxYuan: number
     }
   }>('/payments/options')
+}
+
+/**
+ * 按提现金额实时计算手续费与到账金额（与后端 calcWithdrawFee 同口径）。
+ * 手续费 = 申请金额 × 费率，四舍五入到分；金额很小时手续费可能为 0。
+ */
+export function calcWithdrawPreview(
+  amountYuan: string | number,
+  feeRate: number,
+): { amountCents: number; feeCents: number; actualCents: number; valid: boolean } {
+  const n = Number(amountYuan)
+  if (!Number.isFinite(n) || n <= 0) {
+    return { amountCents: 0, feeCents: 0, actualCents: 0, valid: false }
+  }
+  const amountCents = Math.round(n * 100)
+  const feeCents = Math.round(amountCents * feeRate)
+  return {
+    amountCents,
+    feeCents,
+    actualCents: Math.max(amountCents - feeCents, 0),
+    valid: amountCents > 0,
+  }
+}
+
+/** 分转元（两位小数，用于实时预估展示）。 */
+export function centsToYuan(cents: number): string {
+  return (cents / 100).toFixed(2)
 }
 
 export function setupPaymentPassword(paymentPassword: string) {
@@ -307,6 +336,32 @@ export function adminAdjust(input: {
   note?: string
 }) {
   return request.post<BalanceTxn>('/admin/wallet/adjust', input)
+}
+
+/** 对账修复结果（单边操作，区别于普通余额调整）。 */
+export interface ReconcileFixResult {
+  noop: boolean
+  mode: 'balance' | 'ledger'
+  balanceCents: number
+  txnSumCents: number
+  diffCents: number
+  beforeBalanceCents: number
+  changedCents: number
+  txnId: string | null
+  message?: string
+}
+
+/**
+ * 逐用户对账修复。
+ * balance=以流水为准，只修正余额（不产生新流水，推荐）；
+ * ledger=以余额为准，只补一笔差额流水（余额不变）。
+ */
+export function adminReconcileFix(input: {
+  targetUserId: string
+  mode?: 'balance' | 'ledger'
+  note?: string
+}) {
+  return request.post<ReconcileFixResult>('/admin/wallet/reconcile-fix', input)
 }
 
 // ===== 银行卡与提现 =====

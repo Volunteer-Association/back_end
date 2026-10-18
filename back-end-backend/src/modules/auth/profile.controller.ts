@@ -28,6 +28,7 @@ import {
 import { UsersService } from '../users/users.service.js';
 import { AuthGuard } from '../../guards/auth.guard.js';
 import { UpdateProfileDto } from '../users/dto/update-profile.dto.js';
+import { KycSubmitDto } from './dto/kyc-submit.dto.js';
 import { AuthResponseHelper } from './auth-response.helper.js';
 import { authenticatedUserId } from '../../common/http.util.js';
 import { RegistrationService } from './registration.service.js';
@@ -160,8 +161,6 @@ export class ProfileController {
       dto.mobile === undefined &&
       dto.sex === undefined &&
       dto.avatar === undefined &&
-      dto.idType === undefined &&
-      dto.idNumber === undefined &&
       dto.address === undefined
     ) {
       throw new BadRequestException('请至少提交一项要修改的资料');
@@ -178,22 +177,10 @@ export class ProfileController {
       await this.registration.verifyChangeEmailCode(dto.email, dto.emailCode);
     }
 
-    // emailCode 不是数据库字段，不能传给 update
+    // emailCode 不是数据库字段，不能传给 update。
+    // 证件三要素（real_name / id_type / id_number）属于实名信息，禁止在此直接修改，
+    // 只能走 POST /auth/kyc/submit 实名认证，由管理员审核后生效。
     const { emailCode: _ignored, ...profileChanges } = dto;
-
-    // 如果传了证件类型，同步查字典中文名冗余到 id_type_label
-    if (dto.idType !== undefined) {
-      if (dto.idType === null) {
-        (profileChanges as Record<string, unknown>).idTypeLabel = null;
-      } else {
-        const rows = await this.dataSource.query(
-          `SELECT item_value FROM dict_items WHERE dict_type = 'id_type' AND dict_key = ? AND enabled = 1 LIMIT 1`,
-          [String(dto.idType)],
-        );
-        const row = rows as { item_value: string }[];
-        (profileChanges as Record<string, unknown>).idTypeLabel = row[0]?.item_value ?? null;
-      }
-    }
 
     const profile = await this.usersService.updateProfile(
       userId,
@@ -208,28 +195,60 @@ export class ProfileController {
   @Post('auth/kyc/submit')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '提交实名认证申请（真实姓名+证件号），进入管理员审核队列' })
+  @ApiOperation({
+    summary: '提交实名认证/变更申请（真实姓名+证件类型+证件号），进入管理员审核队列',
+    description:
+      '证件三要素只能通过本接口提交，审核通过后生效；未认证、审核被拒可提交，'
+      + '已认证用户可在此发起实名信息变更（重新进入审核）。审核中禁止重复提交。',
+  })
   async submitKyc(
-    @Body() body: { realName: string; idNumber: string },
+    @Body() dto: KycSubmitDto,
     @Req() request: Request & { user?: unknown },
   ) {
     const userId = authenticatedUserId(request.user);
-    if (!body?.realName?.trim() || !body?.idNumber?.trim()) {
-      throw new BadRequestException('请填写真实姓名和证件号码');
-    }
+    const realName = dto.realName.trim();
+    const idNumber = dto.idNumber.trim();
+
+    // 证件类型必须是启用状态的字典项（1-9 已由 DTO 校验，这里再确认字典存在）。
+    const dictRows = await this.dataSource.query(
+      `SELECT item_value FROM dict_items WHERE dict_type = 'id_type' AND dict_key = ? AND enabled = 1 LIMIT 1`,
+      [String(dto.idType)],
+    );
+    const idTypeLabel = (dictRows as { item_value: string }[])[0]?.item_value ?? null;
+    if (!idTypeLabel) throw new BadRequestException('证件类型不存在或未启用');
+
     const result = await this.dataSource.query(
-      `SELECT verify_status, real_name, id_number FROM users WHERE user_id = ?`,
+      `SELECT verify_status FROM users WHERE user_id = ?`,
       [userId],
     );
-    const row = (result as any[])[0];
+    const row = (result as { verify_status?: number }[])[0];
     if (!row) throw new NotFoundException('用户资料不存在');
-    if (row.verify_status === 2) throw new BadRequestException('已完成实名认证，无需重复提交');
-    if (row.verify_status === 1) throw new BadRequestException('实名审核中，请耐心等待');
+    if (row.verify_status === 1) {
+      throw new BadRequestException('实名审核中，请耐心等待，请勿重复提交');
+    }
+
+    // status 0 未提交 / 3 已拒绝：首次或重新认证；
+    // status 2 已认证：发起实名信息变更，重新进入审核，审核通过前以新提交信息为准。
+    const isChange = row.verify_status === 2;
     await this.dataSource.query(
-      `UPDATE users SET real_name = ?, id_number = ?, verify_status = 1, verify_reject_reason = NULL WHERE user_id = ?`,
-      [body.realName.trim(), body.idNumber.trim(), userId],
+      `UPDATE users
+       SET real_name = ?, id_type = ?, id_type_label = ?, id_number = ?,
+           verify_status = 1, verified_at = NULL, verify_reject_reason = NULL
+       WHERE user_id = ?`,
+      [realName, dto.idType, idTypeLabel, idNumber, userId],
     );
-    return { ok: true, message: '实名申请已提交，请等待管理员审核' };
+    await this.helper.audit(
+      request,
+      'info',
+      isChange ? 'kyc_change_submitted' : 'kyc_submitted',
+      userId,
+    );
+    return {
+      ok: true,
+      message: isChange
+        ? '实名信息变更申请已提交，请等待管理员重新审核'
+        : '实名申请已提交，请等待管理员审核',
+    };
   }
 
   @Get('auth/kyc/status')
@@ -239,7 +258,7 @@ export class ProfileController {
   async kycStatus(@Req() request: Request & { user?: unknown }) {
     const userId = authenticatedUserId(request.user);
     const rows = await this.dataSource.query(
-      `SELECT verify_status, real_name, verified_at, verify_reject_reason, id_number, id_type_label FROM users WHERE user_id = ?`,
+      `SELECT verify_status, real_name, verified_at, verify_reject_reason, id_number, id_type, id_type_label FROM users WHERE user_id = ?`,
       [userId],
     );
     const r = (rows as any[])[0] ?? {};
@@ -249,6 +268,7 @@ export class ProfileController {
       verifiedAt: r.verified_at ?? null,
       rejectReason: r.verify_reject_reason ?? null,
       idNumber: r.id_number ?? null,
+      idType: r.id_type ?? null,
       idTypeLabel: r.id_type_label ?? null,
     };
   }

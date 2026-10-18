@@ -8,6 +8,10 @@ import {
   MaxLength,
 } from 'class-validator';
 
+// 注意：证件三要素（真实姓名 real_name / 证件类型 id_type / 证件号码 id_number）
+// 不在本 DTO 中，禁止通过普通资料修改接口直接改动；
+// 它们只能通过 POST /auth/kyc/submit 实名认证并经管理员审核后生效。
+
 export class UpdateProfileDto {
   @ApiPropertyOptional({
     description: '用户昵称；传 null 或空值可清空昵称。',
@@ -70,26 +74,6 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(255)
   avatar?: string | null;
-
-  @ApiPropertyOptional({
-    description: '证件类型：对应数据字典 id_type 的 key（数字）。',
-    example: 1,
-    nullable: true,
-  })
-  @IsOptional()
-  @IsIn([1, 2, 3, 4, 9])
-  idType?: number | null;
-
-  @ApiPropertyOptional({
-    description: '证件号码。',
-    example: '110101199001011234',
-    maxLength: 50,
-    nullable: true,
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  idNumber?: string | null;
 
   @ApiPropertyOptional({
     description: '联系地址。',

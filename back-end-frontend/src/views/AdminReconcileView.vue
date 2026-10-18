@@ -103,16 +103,27 @@
             <el-tag v-else type="danger" size="small">异常</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="100" fixed="right">
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
-            <el-button
-              v-if="!row.balanced"
-              size="small"
-              type="warning"
-              @click="openFix(row)"
-            >
-              修复
-            </el-button>
+            <template v-if="!row.balanced">
+              <el-button
+                size="small"
+                type="warning"
+                :loading="fixing"
+                @click="applyFix(row, 'balance')"
+              >
+                修复（以流水为准）
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="fixing"
+                @click="applyFix(row, 'ledger')"
+              >
+                补流水
+              </el-button>
+            </template>
             <span v-else class="muted">—</span>
           </template>
         </el-table-column>
@@ -259,11 +270,12 @@
  * 如果差异不为 0，说明有数据不一致需要排查。
  */
 import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import PageHeader from '@/components/PageHeader.vue'
 import { formatDateTime } from '@/utils/utils'
 import {
   adminAdjust,
+  adminReconcileFix,
   adminReconcile,
   adminReconcileByUser,
   adminReconcileDaily,
@@ -408,19 +420,54 @@ async function loadDaily() {
  * 差异 diff = 余额表 - 流水加总
  * 需要调整的金额 = -diff（让余额表向流水加总对齐）
  */
-function openFix(row: UserReconcileRow) {
-  const fixCents = -row.diffCents
-  // 如果是扣钱且余额不足，提前提示
-  if (fixCents < 0 && row.balanceCents + fixCents < 0) {
-    ElMessage.warning(
-      `当前余额 ¥${row.balanceYuan}，需要扣 ¥${(Math.abs(fixCents) / 100).toFixed(2)}，扣后余额为负，无法直接修复。建议先给用户充值，或手动核对流水。`
+const fixing = ref(false)
+
+/**
+ * 对账修复（单边操作）。
+ * 注意：不能用「余额调整」修复——它同时改余额和流水，差异恒等，永远修不平。
+ * - mode='balance'：以流水为准，只把余额表修正为流水加总（不产生新流水，推荐）。
+ * - mode='ledger'：以余额为准，只补一笔差额流水（余额不变）。
+ */
+async function applyFix(row: UserReconcileRow, mode: 'balance' | 'ledger') {
+  const name = row.nickname || row.email || row.userId
+  const isBalanceMode = mode === 'balance'
+  const action = isBalanceMode
+    ? `以流水为准，把【余额表】从 ¥${row.balanceYuan} 修正为 ¥${row.txnSumYuan}，不产生新流水。`
+    : `以余额表为准，补一笔 ¥${row.diffYuan} 的调整流水，余额保持 ¥${row.balanceYuan} 不变。`
+  try {
+    await ElMessageBox.confirm(
+      `用户：${name}（${row.userId}）\n差异：余额表 ¥${row.balanceYuan}，流水加总 ¥${row.txnSumYuan}，差异 ¥${row.diffYuan}\n\n将执行：${action}`,
+      isBalanceMode ? '确认对账修复（以流水为准）' : '确认补录流水（以余额为准）',
+      {
+        confirmButtonText: '确认修复',
+        cancelButtonText: '取消',
+        type: 'warning',
+        dangerouslyUseHTMLString: false,
+        customClass: 'reconcile-fix-confirm',
+      },
     )
-    return
+  } catch {
+    return // 管理员取消
   }
-  adjustForm.targetUserId = row.userId
-  adjustForm.amountYuan = (fixCents / 100).toFixed(2)
-  adjustForm.note = `对账修复：用户 ${row.nickname || row.email || row.userId} 差异 ¥${row.diffYuan}`
-  adjustVisible.value = true
+  if (fixing.value) return
+  fixing.value = true
+  try {
+    const res = await adminReconcileFix({
+      targetUserId: row.userId,
+      mode,
+      note: `逐用户对账修复：${name}`,
+    })
+    if (res.noop) {
+      ElMessage.info(res.message || '该用户已平衡，无需修复')
+    } else {
+      ElMessage.success('对账修复完成，差异已消除')
+    }
+    await Promise.all([load(), loadTxns(), loadUserReconcile(), loadDaily()])
+  } catch (e: unknown) {
+    ElMessage.error((e as { message?: string })?.message || '修复失败')
+  } finally {
+    fixing.value = false
+  }
 }
 
 async function submitAdjust() {

@@ -42,6 +42,10 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id_type_label` VARCHAR(50) NULL COMMENT '证件类型中文名冗余（从字典同步）',
   `id_number` VARCHAR(50) NULL COMMENT '证件号码',
   `address` VARCHAR(255) NULL COMMENT '联系地址',
+  `real_name` VARCHAR(50) NULL COMMENT '实名认证真实姓名',
+  `verify_status` TINYINT NOT NULL DEFAULT 0 COMMENT '实名审核状态：0未提交、1审核中、2已通过、3已拒绝',
+  `verified_at` DATETIME NULL COMMENT '实名通过时间',
+  `verify_reject_reason` VARCHAR(255) NULL COMMENT '审核拒绝原因',
   `creater` VARCHAR(50) NOT NULL DEFAULT '系统' COMMENT '创建人',
   `creater_id` VARCHAR(50) NOT NULL DEFAULT 'system' COMMENT '创建人ID',
   `operator` VARCHAR(50) NULL DEFAULT '系统' COMMENT '最后操作人',
@@ -308,15 +312,18 @@ CREATE TABLE IF NOT EXISTS `notifications` (
 -- ============== 19. 银行卡表 ==============
 CREATE TABLE IF NOT EXISTS `bank_cards` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  `user_id` VARCHAR(30) NOT NULL,
-  `bank_name` VARCHAR(64) NOT NULL,
-  `card_no` VARCHAR(32) NOT NULL,
-  `holder_name` VARCHAR(64) NOT NULL,
-  `branch` VARCHAR(128) NULL,
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '所属用户ID',
+  `bank_name` VARCHAR(50) NOT NULL COMMENT '开户行名称',
+  `card_no` VARCHAR(30) NOT NULL COMMENT '银行卡号',
+  `card_holder` VARCHAR(50) NOT NULL COMMENT '持卡人姓名（须与实名认证一致）',
+  `branch_name` VARCHAR(100) NULL COMMENT '支行名称',
+  `is_default` TINYINT NOT NULL DEFAULT 0 COMMENT '是否默认卡：0否、1是',
+  `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：1正常、0已解绑（软删除）',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户绑定银行卡';
+  KEY `idx_bank_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='用户绑定银行卡';
 
 -- ============== 20. 提现单表 ==============
 CREATE TABLE IF NOT EXISTS `withdrawals` (
@@ -326,17 +333,17 @@ CREATE TABLE IF NOT EXISTS `withdrawals` (
   `amount_cents` BIGINT NOT NULL,
   `fee_cents` BIGINT NOT NULL DEFAULT 0,
   `actual_amount_cents` BIGINT NOT NULL,
-  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0待打款 1已打款 2已拒绝退回 3超时自动取消退回',
+  `status` TINYINT NOT NULL DEFAULT 0 COMMENT '0待审核 1已打款 2已拒绝退回 3超时自动取消退回',
   `reject_reason` VARCHAR(255) NULL,
   `operator` VARCHAR(50) NULL,
   `approved_at` DATETIME NULL COMMENT '审核/处理时间',
   `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_user` (`user_id`),
-  KEY `idx_status` (`status`),
-  KEY `idx_status_created` (`status`, `created_at`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='提现申请单';
+  KEY `idx_withdraw_user` (`user_id`),
+  KEY `idx_withdraw_status` (`status`),
+  KEY `idx_withdraw_status_created` (`status`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='提现申请单';
 
 -- ============== 21. 红包表 ==============
 CREATE TABLE IF NOT EXISTS `red_packets` (
@@ -400,6 +407,20 @@ INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `s
 ('303', 'id_type', '3', '港澳通行证', 3, 1),
 ('304', 'id_type', '4', '台胞证', 4, 1),
 ('305', 'id_type', '9', '其他', 99, 1);
+
+-- 余额流水类型字典数据（payments /options 的 txnTypes 下拉来源）
+INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `sort_order`, `enabled`) VALUES
+('401', 'txn_type', 'recharge', '充值', 10, 1),
+('402', 'txn_type', 'consume', '消费', 20, 1),
+('403', 'txn_type', 'refund', '退款', 30, 1),
+('404', 'txn_type', 'transfer_out', '转账转出', 40, 1),
+('405', 'txn_type', 'transfer_in', '转账转入', 50, 1),
+('406', 'txn_type', 'adjust', '管理员调整', 60, 1),
+('407', 'txn_type', 'withdraw_out', '提现', 70, 1),
+('408', 'txn_type', 'withdraw_refund', '提现退回', 80, 1),
+('409', 'txn_type', 'red_packet_out', '发出红包', 90, 1),
+('410', 'txn_type', 'red_packet_in', '领取红包', 100, 1),
+('411', 'txn_type', 'red_packet_refund', '红包退回', 110, 1);
 
 -- ============== 22. 风控配置表 ==============
 CREATE TABLE IF NOT EXISTS `risk_configs` (

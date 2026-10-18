@@ -131,6 +131,34 @@ export class TransferDto {
   paymentPassword: string;
 }
 
+/**
+ * 逐用户对账修复。
+ * - balance：以流水为准，只把余额表修正为流水加总（不产生新流水，推荐）
+ * - ledger：以余额为准，只补一笔差额流水（余额不变）
+ * 金额由服务端按当前账实计算，前端不得传金额。
+ */
+export class ReconcileFixDto {
+  @ApiProperty({ example: 'u_xxx', description: '目标用户ID' })
+  @IsString()
+  @IsNotEmpty({ message: '目标用户ID不能为空' })
+  targetUserId: string;
+
+  @ApiPropertyOptional({
+    enum: ['balance', 'ledger'],
+    default: 'balance',
+    description: '修复方向：balance=以流水为准修正余额（推荐）；ledger=以余额为准补流水',
+  })
+  @IsOptional()
+  @IsIn(['balance', 'ledger'])
+  mode?: 'balance' | 'ledger';
+
+  @ApiPropertyOptional({ example: '历史账实差异修复', maxLength: 200 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200, { message: '备注最多 200 字' })
+  note?: string;
+}
+
 /** 设置支付密码（首次）。 */
 export class SetupPaymentPasswordDto {
   @ApiProperty({ example: '123456', description: '6 位数字支付密码' })
