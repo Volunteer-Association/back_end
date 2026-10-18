@@ -6,25 +6,34 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
 import { BankCardEntity } from '../../../mysql/entities/bank-card.entity.js';
 import { WithdrawalEntity } from '../../../mysql/entities/withdrawal.entity.js';
 import { BalanceTransactionEntity } from '../../../mysql/entities/balance-transaction.entity.js';
 import { UserBalanceEntity } from '../../../mysql/entities/user-balance.entity.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { RiskService } from './risk.service.js';
+import { PaymentPasswordService } from './payment-password.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import {
+  FEE_INCOME_ACCOUNT_ID,
+  FEE_TXN_TYPE,
+} from './common/platform-account.constants.js';
 
-/** 提现手续费费率：0.10%（按申请金额实时计算，无最低手续费）。 */
+/** 提现手续费费率：0.10%（按申请金额实时计算）。 */
 export const WITHDRAW_FEE_RATE = 0.001;
 /**
+ * 提现手续费最低收费（单位：分）= 1 分（¥0.01）。
+ * 对齐微信/支付宝“按费率收取、设最低手续费”的口径，避免金额很小时手续费为 0。
+ */
+export const WITHDRAW_FEE_MIN_CENTS = 1;
+/**
  * 计算提现手续费（单位：分）。
- * 手续费 = 申请金额 × 0.10%，四舍五入到分；金额很小时手续费可能为 0。
+ * 手续费 = max(申请金额 × 0.10% 四舍五入到分, 最低 1 分)。
  * 后端以此为准入账，前端按同一口径实时预估。
  */
 export function calcWithdrawFee(amountCents: number): number {
   if (!Number.isFinite(amountCents) || amountCents <= 0) return 0;
-  return Math.round(amountCents * WITHDRAW_FEE_RATE);
+  return Math.max(WITHDRAW_FEE_MIN_CENTS, Math.round(amountCents * WITHDRAW_FEE_RATE));
 }
 const WITHDRAW_MIN = 100;       // 1 元
 const WITHDRAW_MAX = 5_000_000; // 5 万
@@ -47,6 +56,7 @@ export class WithdrawService {
     private readonly dataSource: DataSource,
     private readonly paymentNo: PaymentNoGenerator,
     private readonly risk: RiskService,
+    private readonly paymentPassword: PaymentPasswordService,
     private readonly notifications: NotificationsService,
   ) {}
 
@@ -124,17 +134,10 @@ export class WithdrawService {
     });
     if (!card) throw new NotFoundException('银行卡不存在');
 
-    // 校验支付密码
-    const profile = await this.dataSource.query(
-      `SELECT payment_password_hash FROM users WHERE user_id = ?`,
-      [userId],
-    );
-    const ph = (profile as any[])[0];
-    if (!ph?.payment_password_hash) throw new BadRequestException('请先设置支付密码');
-    const ok = await bcrypt.compare(body.paymentPassword, ph.payment_password_hash);
-    if (!ok) throw new BadRequestException('支付密码错误');
+    // 校验支付密码（含连续错误 5 次锁定，统一走 PaymentPasswordService）
+    await this.paymentPassword.verify(userId, body.paymentPassword);
 
-    // 手续费按 0.10% 实时计算（四舍五入到分，无最低手续费）
+    // 手续费 = max(0.10% 四舍五入到分, 最低 1 分)
     const fee = calcWithdrawFee(amountCents);
     const actual = amountCents - fee;
 
@@ -237,14 +240,137 @@ export class WithdrawService {
     });
   }
 
+  /**
+   * 平台提现手续费收入统计。
+   * 统计口径：平台手续费收入账户 PLATFORM_FEE_INCOME 下的 withdraw_fee 流水。
+   * 返回累计 / 今日 / 本月的金额与笔数，以及最近 N 天的按日明细（无收入日期补 0）。
+   */
+  async adminFeeStats(days = 30) {
+    const d = Math.min(Math.max(Number(days) || 30, 1), 365);
+
+    const agg = (await this.dataSource.query(
+      `SELECT
+         COALESCE(SUM(amount_cents), 0) AS total_cents,
+         COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN amount_cents ELSE 0 END), 0) AS today_cents,
+         COALESCE(SUM(CASE WHEN DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+                           THEN amount_cents ELSE 0 END), 0) AS month_cents,
+         COUNT(*) AS total_count,
+         COALESCE(SUM(CASE WHEN DATE(created_at) = CURDATE() THEN 1 ELSE 0 END), 0) AS today_count,
+         COALESCE(SUM(CASE WHEN DATE_FORMAT(created_at, '%Y-%m') = DATE_FORMAT(NOW(), '%Y-%m')
+                           THEN 1 ELSE 0 END), 0) AS month_count
+       FROM balance_transactions
+       WHERE user_id = ? AND type = ?`,
+      [FEE_INCOME_ACCOUNT_ID, FEE_TXN_TYPE],
+    )) as Array<{
+      total_cents: string;
+      today_cents: string;
+      month_cents: string;
+      total_count: string;
+      today_count: string;
+      month_count: string;
+    }>;
+    const a: Partial<Record<string, string>> = agg[0] ?? {};
+
+    // d 已校验为正整数，安全内联，规避参数化 INTERVAL 的驱动兼容问题。
+    const rows = (await this.dataSource.query(
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS d,
+              SUM(amount_cents) AS cents,
+              COUNT(*) AS cnt
+       FROM balance_transactions
+       WHERE user_id = ? AND type = ?
+         AND created_at >= DATE_SUB(CURDATE(), INTERVAL ${d} DAY)
+       GROUP BY d
+       ORDER BY d ASC`,
+      [FEE_INCOME_ACCOUNT_ID, FEE_TXN_TYPE],
+    )) as Array<{ d: string; cents: string; cnt: string }>;
+    const byDate = new Map(rows.map((r) => [r.d, r]));
+
+    // 补齐无收入日期，便于前端连续展示。
+    const daily: Array<{ date: string; cents: string; count: number }> = [];
+    const start = new Date();
+    start.setDate(start.getDate() - (d - 1));
+    for (let i = 0; i < d; i += 1) {
+      const cur = new Date(start);
+      cur.setDate(start.getDate() + i);
+      const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`;
+      const hit = byDate.get(key);
+      daily.push({
+        date: key,
+        cents: hit?.cents ?? '0',
+        count: hit ? Number(hit.cnt) : 0,
+      });
+    }
+
+    return {
+      days: d,
+      totalCents: String(a.total_cents ?? '0'),
+      totalCount: Number(a.total_count ?? 0),
+      todayCents: String(a.today_cents ?? '0'),
+      todayCount: Number(a.today_count ?? 0),
+      monthCents: String(a.month_cents ?? '0'),
+      monthCount: Number(a.month_count ?? 0),
+      daily,
+    };
+  }
+
+  /**
+   * 确认打款：将提现单置为 status=1，并把手续费计入平台收入账户。
+   *
+   * 资金拆分（提现申请金额 amount = 实际到账 actual + 手续费 fee）：
+   * - actual：管理员线下打款到用户银行卡（发生在系统外，本系统不记账）；
+   * - fee：平台收入，必须在打款成功时记入平台手续费收入账户并写流水，
+   *   否则手续费只从用户余额扣除、却没有任何账户承接，会“凭空消失”。
+   *
+   * 手续费只在「打款成功」这一刻确认收入；拒绝/超时是全额退回，不产生手续费。
+   * 全程事务 + 提现单 status=0→1 状态守卫，保证同一单据只打款一次、手续费只入账一次。
+   */
   async adminApprove(orderId: string, operator: string) {
-    // 条件更新：只有 status=0 的单据能被通过，affected=0 说明不存在或已处理，
-    // 防止「通过」与「拒绝」并发或重复点击导致同一单据被处理两次。
-    const res = await this.withdrawals.update(
-      { id: orderId, status: 0 },
-      { status: 1, operator, approvedAt: new Date() },
-    );
-    if (!res.affected) throw new BadRequestException('提现单不存在或已处理');
+    await this.dataSource.transaction('READ COMMITTED', async (manager) => {
+      // 行锁锁定提现单并复查 status=0，与「拒绝/超时」互斥，杜绝重复打款。
+      const w = await manager.findOne(WithdrawalEntity, {
+        where: { id: orderId, status: 0 },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!w) throw new BadRequestException('提现单不存在或已处理');
+
+      w.status = 1;
+      w.operator = operator;
+      w.approvedAt = new Date();
+      await manager.save(WithdrawalEntity, w);
+
+      const fee = Number(w.feeCents);
+      if (fee > 0) {
+        // 手续费计入平台收入账户（首次自动开户），余额 +fee 并写一笔正向流水。
+        let feeBal = await manager.findOne(UserBalanceEntity, {
+          where: { userId: FEE_INCOME_ACCOUNT_ID },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!feeBal) {
+          feeBal = manager.create(UserBalanceEntity, {
+            userId: FEE_INCOME_ACCOUNT_ID,
+            balanceCents: '0',
+            version: 0,
+          });
+        }
+        const feeAfter = Number(feeBal.balanceCents) + fee;
+        feeBal.balanceCents = String(feeAfter);
+        feeBal.version += 1;
+        await manager.save(feeBal);
+
+        const feeTxnNo = this.paymentNo.nextTxnNo(FEE_TXN_TYPE);
+        await manager.save(BalanceTransactionEntity, {
+          id: feeTxnNo,
+          txnNo: feeTxnNo,
+          userId: FEE_INCOME_ACCOUNT_ID,
+          type: FEE_TXN_TYPE,
+          amountCents: String(fee),
+          balanceAfterCents: String(feeAfter),
+          refType: 'withdraw',
+          refId: w.id,
+          note: `提现手续费收入：单号 ${w.id}`,
+        });
+      }
+    });
   }
 
   async adminReject(orderId: string, operator: string, reason?: string) {

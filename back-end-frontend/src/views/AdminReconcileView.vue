@@ -77,7 +77,10 @@
       <el-table :data="userRows" stripe max-height="400">
         <el-table-column label="用户" min-width="180">
           <template #default="{ row }">
-            <div>{{ row.nickname || row.email || row.userId }}</div>
+            <div>
+              {{ row.nickname || row.email || row.userId }}
+              <el-tag v-if="row.isSystem" size="small" type="info" effect="plain" class="ml-6">系统</el-tag>
+            </div>
             <div class="muted mono">{{ row.userId }}</div>
           </template>
         </el-table-column>
@@ -323,6 +326,7 @@ const allTimeRows = computed(() => {
     { label: '调整', cents: a.adjustSumCents },
     { label: '提现', cents: a.withdrawOutSumCents },
     { label: '提现退回', cents: a.withdrawRefundSumCents },
+    { label: '提现手续费收入', cents: a.withdrawFeeSumCents },
     { label: '发红包', cents: a.redPacketOutSumCents },
     { label: '收红包', cents: a.redPacketInSumCents },
     { label: '红包过期退回', cents: a.redPacketRefundSumCents },

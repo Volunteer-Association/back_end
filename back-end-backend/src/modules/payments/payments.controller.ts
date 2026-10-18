@@ -20,7 +20,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { PaymentsService } from './payments.service.js';
 import { DataSource } from 'typeorm';
 import { RiskService } from './risk.service.js';
-import { WITHDRAW_FEE_RATE } from './withdraw.service.js';
+import { WITHDRAW_FEE_RATE, WITHDRAW_FEE_MIN_CENTS } from './withdraw.service.js';
 import { CreateRechargeDto, TransferDto, SetupPaymentPasswordDto, ChangePaymentPasswordDto } from './dto/payments.dto.js';
 
 @ApiTags('支付-用户端')
@@ -56,6 +56,7 @@ export class PaymentsController {
       ],
       txnTypes: rows,
       withdrawFeeRate: WITHDRAW_FEE_RATE,
+      withdrawFeeMinCents: WITHDRAW_FEE_MIN_CENTS,
       riskLimits: {
         transferSingleMaxYuan: await this.risk.getNum('transfer_single_max_yuan', 10000),
         transferDailyMaxYuan: await this.risk.getNum('transfer_daily_max_yuan', 50000),

@@ -37,6 +37,7 @@ export type BalanceTxnType =
   | 'adjust'        // 管理员手工调整
   | 'withdraw_out'  // 提现扣款
   | 'withdraw_refund' // 提现被拒绝退回
+  | 'withdraw_fee'  // 提现手续费收入（计入平台手续费收入账户）
   | 'red_packet_out' // 发红包
   | 'red_packet_in' // 收红包
   | 'red_packet_refund'; // 过期红包未领部分退回
@@ -71,6 +72,7 @@ export class BalanceTransactionEntity {
       'adjust',
       'withdraw_out',
       'withdraw_refund',
+      'withdraw_fee',
       'red_packet_out',
       'red_packet_in',
       'red_packet_refund',

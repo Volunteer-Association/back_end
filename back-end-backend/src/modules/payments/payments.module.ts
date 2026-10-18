@@ -27,6 +27,7 @@ import { RedPacketController } from './red-packet.controller.js';
 import { RedPacketService } from './red-packet.service.js';
 import { RedPacketScheduler } from './red-packet.scheduler.js';
 import { RiskService } from './risk.service.js';
+import { PaymentPasswordService } from './payment-password.service.js';
 import { CommonModule } from '../common/common.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
@@ -49,7 +50,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     ]),
   ],
   controllers: [PaymentsController, AdminPaymentsController, AdminWalletController, WithdrawController, AdminWithdrawController, RedPacketController, AdminRiskController],
-  providers: [PaymentsService, AuthGuard, WithdrawService, WithdrawScheduler, RedPacketService, RedPacketScheduler, RiskService],
-  exports: [PaymentsService],
+  providers: [PaymentsService, AuthGuard, WithdrawService, WithdrawScheduler, RedPacketService, RedPacketScheduler, RiskService, PaymentPasswordService],
+  exports: [PaymentsService, PaymentPasswordService],
 })
 export class PaymentsModule {}

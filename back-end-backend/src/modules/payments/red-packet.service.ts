@@ -4,12 +4,12 @@ import {
   Logger,
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
-import * as bcrypt from 'bcryptjs';
 import { BalanceTransactionEntity } from '../../../mysql/entities/balance-transaction.entity.js';
 import { UserBalanceEntity } from '../../../mysql/entities/user-balance.entity.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { RiskService } from './risk.service.js';
+import { PaymentPasswordService } from './payment-password.service.js';
 
 /** 红包有效期：24 小时。 */
 const RED_PACKET_TTL_MS = 24 * 3600 * 1000;
@@ -36,6 +36,7 @@ export class RedPacketService {
     private readonly paymentNo: PaymentNoGenerator,
     private readonly notifications: NotificationsService,
     private readonly risk: RiskService,
+    private readonly paymentPassword: PaymentPasswordService,
   ) {}
 
   /** 发红包：扣余额，生成红包单 */
@@ -56,15 +57,8 @@ export class RedPacketService {
     if (!toUser) throw new BadRequestException('收款人邮箱不存在');
     if (toUser.user_id === senderId) throw new BadRequestException('不能给自己发红包');
 
-    // 校验支付密码
-    const profile = await this.dataSource.query(
-      `SELECT payment_password_hash FROM users WHERE user_id = ?`,
-      [senderId],
-    );
-    const ph = (profile as any[])[0];
-    if (!ph?.payment_password_hash) throw new BadRequestException('请先设置支付密码');
-    const ok = await bcrypt.compare(body.paymentPassword, ph.payment_password_hash);
-    if (!ok) throw new BadRequestException('支付密码错误');
+    // 校验支付密码（含连续错误 5 次锁定，统一走 PaymentPasswordService）
+    await this.paymentPassword.verify(senderId, body.paymentPassword);
 
     const packetId = this.paymentNo.nextTxnNo('red_packet_out');
     const expiredAt = new Date(Date.now() + RED_PACKET_TTL_MS);

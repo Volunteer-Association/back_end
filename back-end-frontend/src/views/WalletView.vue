@@ -368,13 +368,13 @@
             <template #append>元</template>
           </el-input>
         </el-form-item>
-        <!-- 手续费实时计算：申请金额 × 0.10%，到账 = 申请金额 - 手续费 -->
+        <!-- 手续费实时计算：max(申请金额 × 0.10% 四舍五入到分, 最低 ¥0.01)，到账 = 申请金额 - 手续费 -->
         <div class="fee-preview" v-if="wdPreview.valid">
           <div class="fee-row">
             <span>申请金额</span><span>¥{{ centsToYuan(wdPreview.amountCents) }}</span>
           </div>
           <div class="fee-row">
-            <span>手续费（{{ feePercent }}）</span>
+            <span>手续费（{{ feePercent }}，最低 ¥0.01）</span>
             <span class="fee-amount">-¥{{ centsToYuan(wdPreview.feeCents) }}</span>
           </div>
           <div class="fee-row total">
@@ -522,7 +522,11 @@ function onWdAmountInput(val: string) {
 
 /** 手续费实时预估（与后端同口径，最终以后端入账为准）。 */
 const wdPreview = computed(() =>
-  calcWithdrawPreview(wd.amount, paymentOptions.value.withdrawFeeRate),
+  calcWithdrawPreview(
+    wd.amount,
+    paymentOptions.value.withdrawFeeRate,
+    paymentOptions.value.withdrawFeeMinCents ?? 1,
+  ),
 )
 /** 费率展示文案，0.001 → "0.10%"。 */
 const feePercent = computed(() =>
@@ -662,6 +666,7 @@ const paymentOptions = ref<{
   rechargeChannels: { value: string; label: string }[]
   txnTypes: { value: string; label: string }[]
   withdrawFeeRate: number
+  withdrawFeeMinCents: number
   riskLimits: {
     transferSingleMaxYuan: number
     transferDailyMaxYuan: number
@@ -669,7 +674,7 @@ const paymentOptions = ref<{
     withdrawSingleMaxYuan: number
     redpacketSingleMaxYuan: number
   }
-}>({ rechargeStatuses: [], rechargeChannels: [], txnTypes: [], withdrawFeeRate: 0.001, riskLimits: {
+}>({ rechargeStatuses: [], rechargeChannels: [], txnTypes: [], withdrawFeeRate: 0.001, withdrawFeeMinCents: 1, riskLimits: {
   transferSingleMaxYuan: 10000, transferDailyMaxYuan: 50000,
   withdrawSingleMinYuan: 1, withdrawSingleMaxYuan: 50000,
   redpacketSingleMaxYuan: 2000,

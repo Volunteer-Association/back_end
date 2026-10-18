@@ -177,6 +177,20 @@ CREATE TABLE IF NOT EXISTS `auth_login_attempts` (
   KEY `idx_login_attempts_last_attempt` (`last_attempt_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='登录失败限流计数表';
 
+-- ============== 10.1 支付密码错误锁定表 ==============
+-- 字段与 src/modules/payments/payment-password.service.ts 原生 SQL 保持一致：
+-- 按用户维度记录支付密码连续错误次数；达到 risk_configs.pay_password_max_fail
+-- （默认 5）次后写入 locked_until 锁定 pay_password_lock_minutes（默认 30）分钟，
+-- 校验成功清零，锁定期满自动重新计数。
+CREATE TABLE IF NOT EXISTS `payment_password_attempts` (
+  `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID（users.user_id）',
+  `failure_count` INT UNSIGNED NOT NULL DEFAULT 0 COMMENT '连续错误次数（校验成功清零）',
+  `locked_until` DATETIME NULL COMMENT '支付密码锁定截止时间，NULL 表示未锁定',
+  `last_attempt_at` DATETIME NOT NULL COMMENT '最近一次尝试时间',
+  PRIMARY KEY (`user_id`),
+  KEY `idx_payment_pw_attempts_locked` (`locked_until`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='支付密码连续错误锁定记录表';
+
 -- ============== 11. 审计日志表 ==============
 CREATE TABLE IF NOT EXISTS `logs` (
   `id` BIGINT UNSIGNED NOT NULL AUTO_INCREMENT COMMENT '表id',
@@ -252,7 +266,7 @@ CREATE TABLE IF NOT EXISTS `balance_transactions` (
   `id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '内部主键（雪花ID）',
   `txn_no` VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NULL COMMENT '对外支付流水号（28位业务编号，独立于内部主键）',
   `user_id` VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL COMMENT '用户ID',
-  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust', 'withdraw_out', 'withdraw_refund', 'red_packet_out', 'red_packet_in', 'red_packet_refund') NOT NULL COMMENT '流水类型',
+  `type` ENUM('recharge', 'consume', 'refund', 'transfer_out', 'transfer_in', 'adjust', 'withdraw_out', 'withdraw_refund', 'withdraw_fee', 'red_packet_out', 'red_packet_in', 'red_packet_refund') NOT NULL COMMENT '流水类型',
   `amount_cents` BIGINT NOT NULL COMMENT '变动金额，带符号，单位分',
   `balance_after_cents` BIGINT NOT NULL COMMENT '变动后余额，单位分',
   `ref_type` VARCHAR(32) NULL COMMENT '关联业务类型：bill / recharge / transfer / admin_adjust / withdraw / red_packet',
@@ -420,7 +434,8 @@ INSERT IGNORE INTO `dict_items` (`id`, `dict_type`, `dict_key`, `item_value`, `s
 ('408', 'txn_type', 'withdraw_refund', '提现退回', 80, 1),
 ('409', 'txn_type', 'red_packet_out', '发出红包', 90, 1),
 ('410', 'txn_type', 'red_packet_in', '领取红包', 100, 1),
-('411', 'txn_type', 'red_packet_refund', '红包退回', 110, 1);
+('411', 'txn_type', 'red_packet_refund', '红包退回', 110, 1),
+('412', 'txn_type', 'withdraw_fee', '提现手续费', 115, 1);
 
 -- ============== 22. 风控配置表 ==============
 CREATE TABLE IF NOT EXISTS `risk_configs` (
@@ -439,5 +454,6 @@ INSERT IGNORE INTO risk_configs (config_key, config_value, description) VALUES
 ('withdraw_daily_max_yuan', '200000', '每日提现累计上限（元）'),
 ('recharge_single_max_yuan', '50000', '单笔充值上限（元）'),
 ('pay_password_max_fail', '5', '支付密码连续错误锁定次数'),
+('pay_password_lock_minutes', '30', '支付密码错误超限后的锁定时长（分钟）'),
 ('redpacket_single_max_yuan', '2000', '单个红包上限（元）'),
 ('withdraw_timeout_hours', '48', '提现单待审核超时时间（小时），超时后系统自动取消并退款');

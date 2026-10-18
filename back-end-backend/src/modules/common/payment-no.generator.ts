@@ -24,6 +24,7 @@ const TXN_TYPE_CODES: Record<BalanceTxnType, string> = {
   adjust: '50',
   withdraw_out: '60',
   withdraw_refund: '61',
+  withdraw_fee: '62',
   red_packet_out: '70',
   red_packet_in: '71',
   red_packet_refund: '72',

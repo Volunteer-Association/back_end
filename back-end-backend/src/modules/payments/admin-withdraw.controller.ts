@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -23,6 +24,12 @@ export class AdminWithdrawController {
   @ApiOperation({ summary: '待打款提现列表' })
   pending() {
     return this.svc.adminPending();
+  }
+
+  @Get('fee-stats')
+  @ApiOperation({ summary: '平台提现手续费收入统计（累计/今日/本月/按日）' })
+  feeStats(@Query('days') days?: string) {
+    return this.svc.adminFeeStats(days ? Number(days) : 30);
   }
 
   @Post(':id/approve')

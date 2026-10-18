@@ -24,6 +24,12 @@ import {
 } from '../../../mysql/snowflake-id.js';
 import { PaymentNoGenerator } from '../common/payment-no.generator.js';
 import { RiskService } from './risk.service.js';
+import { PaymentPasswordService } from './payment-password.service.js';
+import {
+  FEE_INCOME_ACCOUNT_ID,
+  FEE_INCOME_ACCOUNT_NAME,
+  FEE_TXN_TYPE,
+} from './common/platform-account.constants.js';
 import { BCRYPT_ROUNDS } from '../auth/password-policy.js';
 
 export interface RechargeRequest {
@@ -171,6 +177,7 @@ export class PaymentsService {
     private readonly idGenerator: SnowflakeIdGenerator,
     private readonly paymentNo: PaymentNoGenerator,
     private readonly risk: RiskService,
+    private readonly paymentPassword: PaymentPasswordService,
   ) {}
 
   // ===== 用户端 =====
@@ -324,8 +331,8 @@ export class PaymentsService {
     if (!profile?.paymentPasswordHash) {
       throw new BadRequestException('尚未设置支付密码');
     }
-    const ok = await bcrypt.compare(oldPassword, profile.paymentPasswordHash);
-    if (!ok) throw new BadRequestException('原支付密码错误');
+    // 旧密码同样走“连续错误锁定”校验，防止借改密入口爆破支付密码。
+    await this.paymentPassword.verify(userId, oldPassword);
     profile.paymentPasswordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.profiles.save(profile);
   }
@@ -335,18 +342,8 @@ export class PaymentsService {
    * 未设置支付密码的用户会被引导先去设置。
    */
   async assertPaymentPassword(userId: string, paymentPassword: string): Promise<void> {
-    if (!paymentPassword) {
-      throw new BadRequestException('请输入支付密码');
-    }
-    const profile = await this.profiles.findOne({
-      where: { userId },
-      select: { paymentPasswordHash: true },
-    });
-    if (!profile?.paymentPasswordHash) {
-      throw new BadRequestException('尚未设置支付密码，请先在钱包页设置');
-    }
-    const ok = await bcrypt.compare(paymentPassword, profile.paymentPasswordHash);
-    if (!ok) throw new BadRequestException('支付密码错误');
+    // 统一走带“连续错误锁定”的校验（提现/转账/红包/账单支付等全部复用）。
+    await this.paymentPassword.verify(userId, paymentPassword);
   }
 
   /** 申请线下充值。状态为 pending，等待管理员审核。 */
@@ -1032,10 +1029,12 @@ export class PaymentsService {
       const txnSumCents = txnRow ? Number(txnRow.sumCents) : 0;
       const diff = balanceCents - txnSumCents;
       const profile = profileMap.get(userId);
+      const isFeeAccount = userId === FEE_INCOME_ACCOUNT_ID;
       return {
         userId,
         email: profile?.email ?? null,
-        nickname: profile?.nickname ?? null,
+        nickname: isFeeAccount ? FEE_INCOME_ACCOUNT_NAME : (profile?.nickname ?? null),
+        isSystem: isFeeAccount,
         balanceCents,
         balanceYuan: centsToYuan(balanceCents),
         txnSumCents,
@@ -1124,10 +1123,13 @@ export class PaymentsService {
     const map = new Map(profiles.map((p) => [p.userId, p]));
     return rows.map((r) => {
       const p = map.get(r.userId);
+      // 平台手续费收入账户不是真实用户，给一个可读名称，避免显示为空白。
+      const isFeeAccount = r.userId === FEE_INCOME_ACCOUNT_ID;
       return {
         userId: r.userId,
         email: p?.email ?? null,
-        nickname: p?.nickname ?? null,
+        nickname: isFeeAccount ? FEE_INCOME_ACCOUNT_NAME : (p?.nickname ?? null),
+        isSystem: isFeeAccount,
         balanceCents: Number(r.balanceCents),
         balanceYuan: centsToYuan(Number(r.balanceCents)),
         version: r.version,
@@ -1199,7 +1201,7 @@ export class PaymentsService {
       return { cents, big: BigInt(cents) };
     };
 
-    const [recharge, consume, transferOut, transferIn, refund, adjust, withdrawOut, withdrawRefund, redPacketOut, redPacketIn, redPacketRefund] =
+    const [recharge, consume, transferOut, transferIn, refund, adjust, withdrawOut, withdrawRefund, withdrawFee, redPacketOut, redPacketIn, redPacketRefund] =
       await Promise.all([
         sumByType('recharge'),
         sumByType('consume'),
@@ -1209,15 +1211,16 @@ export class PaymentsService {
         sumByType('adjust'),
         sumByType('withdraw_out'),
         sumByType('withdraw_refund'),
+        sumByType(FEE_TXN_TYPE),
         sumByType('red_packet_out'),
         sumByType('red_packet_in'),
         sumByType('red_packet_refund'),
       ]);
-    // 红包三类净额恒为 0（出款负 + 领取正 + 过期退回正），纳入求和不影响平衡，
-    // 但能保证账本全类型覆盖，未来新增红包玩法也不会遗漏。
+    // 红包三类净额恒为 0（出款负 + 领取正 + 过期退回正），纳入求和不影响平衡；
+    // withdraw_fee 是平台手续费收入账户的正向余额，与其账户余额对应，也必须计入。
     const ledgerSum =
       recharge.big + consume.big + transferOut.big + transferIn.big + refund.big + adjust.big
-      + withdrawOut.big + withdrawRefund.big
+      + withdrawOut.big + withdrawRefund.big + withdrawFee.big
       + redPacketOut.big + redPacketIn.big + redPacketRefund.big;
     const diff = totalBalanceCents - ledgerSum;
 
@@ -1240,6 +1243,7 @@ export class PaymentsService {
         adjustSumCents: adjust.cents,
         withdrawOutSumCents: withdrawOut.cents,
         withdrawRefundSumCents: withdrawRefund.cents,
+        withdrawFeeSumCents: withdrawFee.cents,
         redPacketOutSumCents: redPacketOut.cents,
         redPacketInSumCents: redPacketIn.cents,
         redPacketRefundSumCents: redPacketRefund.cents,

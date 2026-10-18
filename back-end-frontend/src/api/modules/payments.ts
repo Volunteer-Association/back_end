@@ -11,6 +11,7 @@ export type BalanceTxnType =
   | 'adjust'
   | 'withdraw_out'
   | 'withdraw_refund'
+  | 'withdraw_fee'
   | 'red_packet_out'
   | 'red_packet_in'
   | 'red_packet_refund'
@@ -142,6 +143,8 @@ export function getPaymentsOptions() {
     txnTypes: DictOption[]
     /** 提现手续费费率：0.10% = 0.001，前端按此实时预估，最终以后端入账为准 */
     withdrawFeeRate: number
+    /** 提现手续费最低收费（分），默认 1 分（¥0.01） */
+    withdrawFeeMinCents: number
     riskLimits: {
       transferSingleMaxYuan: number
       transferDailyMaxYuan: number
@@ -152,20 +155,24 @@ export function getPaymentsOptions() {
   }>('/payments/options')
 }
 
+/** 提现手续费最低收费（分），与后端 WITHDRAW_FEE_MIN_CENTS 保持一致：¥0.01。 */
+export const WITHDRAW_FEE_MIN_CENTS = 1
+
 /**
  * 按提现金额实时计算手续费与到账金额（与后端 calcWithdrawFee 同口径）。
- * 手续费 = 申请金额 × 费率，四舍五入到分；金额很小时手续费可能为 0。
+ * 手续费 = max(申请金额 × 费率 四舍五入到分, 最低 1 分)。
  */
 export function calcWithdrawPreview(
   amountYuan: string | number,
   feeRate: number,
+  minFeeCents: number = WITHDRAW_FEE_MIN_CENTS,
 ): { amountCents: number; feeCents: number; actualCents: number; valid: boolean } {
   const n = Number(amountYuan)
   if (!Number.isFinite(n) || n <= 0) {
     return { amountCents: 0, feeCents: 0, actualCents: 0, valid: false }
   }
   const amountCents = Math.round(n * 100)
-  const feeCents = Math.round(amountCents * feeRate)
+  const feeCents = Math.max(minFeeCents, Math.round(amountCents * feeRate))
   return {
     amountCents,
     feeCents,
@@ -267,6 +274,7 @@ export interface ReconcileReport {
     adjustSumCents: string
     withdrawOutSumCents: string
     withdrawRefundSumCents: string
+    withdrawFeeSumCents: string
     redPacketOutSumCents: string
     redPacketInSumCents: string
     redPacketRefundSumCents: string
@@ -302,6 +310,8 @@ export interface UserReconcileRow {
   userId: string
   email: string | null
   nickname: string | null
+  /** 平台内部账户（如手续费收入账户），不是真实用户。 */
+  isSystem?: boolean
   balanceCents: number
   balanceYuan: string
   txnSumCents: number
@@ -414,9 +424,32 @@ export function listMyWithdrawals() {
   return request.get<MyWithdrawal[]>('/wallet/withdrawals')
 }
 
+/** 平台提现手续费收入（按日）。 */
+export interface WithdrawFeeDailyRow {
+  date: string
+  /** 当日手续费（分），字符串，避免大汇总数精度丢失。 */
+  cents: string
+  count: number
+}
+
+/** 平台提现手续费收入统计。 */
+export interface WithdrawFeeStats {
+  days: number
+  totalCents: string
+  totalCount: number
+  todayCents: string
+  todayCount: number
+  monthCents: string
+  monthCount: number
+  daily: WithdrawFeeDailyRow[]
+}
+
 // 管理员
 export function adminWithdrawPending() {
   return request.get<any[]>('/admin/withdraw/pending')
+}
+export function adminWithdrawFeeStats(days = 30) {
+  return request.get<WithdrawFeeStats>('/admin/withdraw/fee-stats', { params: { days } })
 }
 export function adminWithdrawApprove(id: string) {
   return request.post(`/admin/withdraw/${id}/approve`)
