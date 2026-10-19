@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>支付体系架构诊断与改造蓝图 · 企业精神管理平台</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%2316263f'/%3E%3Ctext x='32' y='46' font-size='40' font-family='sans-serif' font-weight='700' text-anchor='middle' fill='%23ffffff'%3E%C2%A5%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#f4f6f9; --paper:#ffffff; --ink:#16202e; --ink2:#3d4c60; --muted:#6b7a8d;
+  --line:#e3e8ef; --line2:#eef1f6;
+  --nav:#0e1726; --nav2:#16213a; --navink:#c4d0e2; --navactive:#ffffff;
+  --blue:#1d63d6; --blue-bg:#eaf1fd;
+  --ali:#1677ff; --wx:#07c160;
+  --green:#0f9d58; --green-bg:#e7f6ee;
+  --orange:#d97706; --orange-bg:#fdf3e3;
+  --red:#dc2626; --red-bg:#fdecec;
+  --slate:#64748b; --slate-bg:#eef2f7;
+  --mono:ui-monospace,"Cascadia Code","SFMono-Regular",Consolas,"JetBrains Mono",Menlo,monospace;
+  --sans:"PingFang SC","Microsoft YaHei","Noto Sans SC",-apple-system,"Segoe UI",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg);color:var(--ink);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+a{color:var(--blue);text-decoration:none}
+::selection{background:#bcd4fb}
+
+/* ===== 布局 ===== */
+.layout{display:flex;min-height:100vh}
+nav.side{width:248px;background:var(--nav);color:var(--navink);position:fixed;top:0;bottom:0;left:0;overflow-y:auto;padding:26px 0;flex-shrink:0}
+.brand{padding:0 22px 20px;border-bottom:1px solid #1f2c45;margin-bottom:14px}
+.brand .logo{font-family:var(--mono);font-size:13px;color:#7ea2d6;letter-spacing:.5px}
+.brand h1{font-size:16.5px;color:#fff;font-weight:700;margin-top:6px;line-height:1.4}
+.brand .sub{font-size:12px;color:#7686a1;margin-top:4px}
+nav.side a.navlink{display:flex;align-items:center;gap:10px;padding:9px 22px;color:var(--navink);font-size:13.5px;border-left:3px solid transparent;cursor:pointer}
+nav.side a.navlink:hover{background:var(--nav2);color:#fff}
+nav.side a.navlink.active{background:var(--nav2);color:#fff;border-left-color:var(--blue)}
+nav.side .nidx{font-family:var(--mono);font-size:11px;color:#5d708e;width:20px}
+main{margin-left:248px;flex:1;min-width:0}
+.wrap{max-width:1080px;margin:0 auto;padding:0 40px 80px}
+
+/* ===== Hero ===== */
+.hero{background:linear-gradient(135deg,#0e1726 0%,#16263f 55%,#1a3358 100%);color:#fff;padding:58px 40px 50px;border-bottom:1px solid #0b1320}
+.hero .kicker{font-family:var(--mono);font-size:12.5px;color:#8fb0e6;letter-spacing:1px;text-transform:uppercase}
+.hero h2{font-size:34px;font-weight:800;line-height:1.25;margin:14px 0 12px;letter-spacing:-.5px}
+.hero p.lead{font-size:15.5px;color:#c3d0e3;max-width:760px;line-height:1.8}
+.hero .meta{display:flex;flex-wrap:wrap;gap:18px;margin-top:24px;font-size:12.5px;color:#93a5c4}
+.hero .meta span{display:inline-flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.verdict{margin-top:26px;background:rgba(255,255,255,.06);border:1px solid #28395c;border-radius:12px;padding:18px 20px;display:flex;gap:16px;align-items:flex-start}
+.verdict .badge{flex-shrink:0;background:var(--orange);color:#fff;font-weight:700;font-size:12px;padding:5px 11px;border-radius:6px;margin-top:2px}
+.verdict p{font-size:14px;color:#dbe4f2;line-height:1.75}
+
+/* ===== 区块 ===== */
+section{padding:46px 0 8px;scroll-margin-top:20px}
+.sec-head{display:flex;align-items:baseline;gap:14px;margin-bottom:6px}
+.sec-no{font-family:var(--mono);font-size:13px;color:var(--blue);font-weight:700}
+.sec-head h3{font-size:24px;font-weight:800;letter-spacing:-.3px}
+.sec-desc{color:var(--muted);font-size:14px;margin:6px 0 24px;max-width:820px}
+h4.block{font-size:16.5px;font-weight:700;margin:30px 0 12px;padding-left:11px;border-left:3px solid var(--blue)}
+h4.block.warn{border-left-color:var(--orange)}
+h4.block.danger{border-left-color:var(--red)}
+
+/* ===== 卡片/统计 ===== */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:20px 0 6px}
+.stat{background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:16px 17px}
+.stat .num{font-size:27px;font-weight:800;font-family:var(--mono);letter-spacing:-1px}
+.stat .num.red{color:var(--red)} .stat .num.orange{color:var(--orange)} .stat .num.green{color:var(--green)} .stat .num.blue{color:var(--blue)}
+.stat .lab{font-size:12.5px;color:var(--muted);margin-top:3px;line-height:1.5}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:22px 24px;margin:14px 0}
+.card h5{font-size:15px;font-weight:700;margin-bottom:8px}
+.card p,.card li{font-size:14px;color:var(--ink2)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+
+/* ===== 标签徽章 ===== */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:20px;line-height:1.7;white-space:nowrap}
+.t-have{background:var(--green-bg);color:var(--green)}
+.t-part{background:var(--orange-bg);color:var(--orange)}
+.t-miss{background:var(--red-bg);color:var(--red)}
+.t-new{background:var(--blue-bg);color:var(--blue)}
+.t-p0{background:#fdecec;color:#b91c1c} .t-p1{background:#fdf3e3;color:#b45309} .t-p2{background:#eaf1fd;color:#1d4ed8} .t-p3{background:#eef2f7;color:#475569}
+.t-ali{background:#e8f2ff;color:var(--ali)} .t-wx{background:#e3f9ee;color:#05924b}
+.chip{display:inline-block;font-family:var(--mono);font-size:11px;background:#f1f4f9;border:1px solid var(--line);border-radius:5px;padding:1px 6px;color:#334155}
+
+/* ===== 表格 ===== */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:11px;margin:14px 0;background:var(--paper)}
+table{border-collapse:collapse;width:100%;font-size:13px;table-layout:auto}
+th{background:#f7f9fc;text-align:left;padding:11px 13px;font-weight:700;color:var(--ink2);font-size:12.5px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:10px 13px;border-bottom:1px solid var(--line2);vertical-align:top;color:var(--ink2);line-height:1.6}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafbfe}
+td code,.mono{font-family:var(--mono);font-size:12px}
+td .fn{font-family:var(--mono);font-size:11.5px;color:#5b6b82}
+.tight td,.tight th{padding:8px 11px}
+
+/* ===== 现状能力矩阵 ===== */
+.matrix{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.mx{display:flex;gap:11px;align-items:flex-start;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:12px 14px}
+.mx .ic{margin-top:2px}
+.mx .t{font-size:13.5px;font-weight:600;color:var(--ink)}
+.mx .d{font-size:12px;color:var(--muted);line-height:1.5;margin-top:2px}
+
+/* ===== 代码/目录树 ===== */
+pre.code{background:#0e1726;color:#d3deef;border-radius:11px;padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.75;margin:14px 0}
+pre.code .dir{color:#7fb0ff;font-weight:700}
+pre.code .file{color:#cdd9ec}
+pre.code .cmt{color:#66789b;font-style:italic}
+pre.code .new{color:#5fd499}
+pre.code .warn{color:#f0b860}
+.tree-hint{font-size:12.5px;color:var(--muted);margin:4px 0 0}
+.legend{display:flex;flex-wrap:wrap;gap:14px;margin:8px 0 0;font-size:12px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+
+/* ===== 问题列表 ===== */
+.issue{display:flex;gap:16px;background:var(--paper);border:1px solid var(--line);border-radius:11px;padding:17px 20px;margin:12px 0}
+.issue .sev{flex-shrink:0;width:54px;text-align:center}
+.issue .sev .s{font-size:11px;font-weight:700;padding:3px 0;border-radius:6px;display:block}
+.issue .body h5{font-size:14.5px;margin-bottom:5px}
+.issue .body p{font-size:13px;color:var(--ink2);line-height:1.65}
+.issue .body .fix{margin-top:8px;font-size:12.5px;color:var(--green);background:var(--green-bg);border-radius:7px;padding:7px 11px}
+.issue .body .loc{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+/* ===== 架构层 ===== */
+.layers{display:flex;flex-direction:column;gap:8px;margin:16px 0}
+.layer{border-radius:10px;padding:13px 16px;border:1px solid var(--line)}
+.layer .lh{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.layer .lh .lt{font-family:var(--mono);font-size:11px;background:rgba(0,0,0,.08);padding:2px 8px;border-radius:5px}
+.layer .boxes{display:flex;flex-wrap:wrap;gap:8px}
+.layer .box{background:rgba(255,255,255,.75);border:1px solid var(--line);border-radius:7px;padding:6px 11px;font-size:12px;font-weight:600}
+.l1{background:#eef4ff}.l2{background:#eafaf1}.l3{background:#fff7ec}.l4{background:#f3f0ff}.l5{background:#eef2f7}
+.flow{display:flex;align-items:stretch;gap:0;margin:16px 0;flex-wrap:wrap}
+.fstep{flex:1;min-width:120px;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:12px 13px;position:relative;margin-right:22px}
+.fstep:last-child{margin-right:0}
+.fstep:not(:last-child)::after{content:"→";position:absolute;right:-19px;top:50%;transform:translateY(-50%);color:var(--blue);font-weight:800;font-size:18px}
+.fstep .n{font-family:var(--mono);font-size:11px;color:var(--blue);font-weight:700}
+.fstep .t{font-size:13px;font-weight:700;margin:3px 0 3px}
+.fstep .d{font-size:11.5px;color:var(--muted);line-height:1.5}
+
+/* ===== 路线图 ===== */
+.road{position:relative;margin:20px 0 10px;padding-left:8px}
+.rnode{display:grid;grid-template-columns:120px 26px 1fr;gap:0 14px;align-items:start;margin-bottom:20px}
+.rnode .phase{text-align:right;padding-top:2px}
+.rnode .phase .p{font-weight:800;font-size:14px;color:var(--blue)}
+.rnode .phase .w{font-size:11.5px;color:var(--muted);font-family:var(--mono)}
+.rnode .rail{position:relative;height:100%;justify-self:center}
+.rnode .rail::before{content:"";position:absolute;left:50%;top:6px;bottom:-26px;width:2px;background:var(--line);transform:translateX(-50%)}
+.rnode:last-child .rail::before{display:none}
+.rnode .pt{width:15px;height:15px;border-radius:50%;border:3px solid var(--blue);background:#fff;position:relative;z-index:1;margin:4px auto 0}
+.rnode.done .pt{background:var(--green);border-color:var(--green)}
+.rnode .rc{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:13px 17px}
+.rnode .rc h5{font-size:14.5px;margin-bottom:5px;display:flex;align-items:center;gap:9px}
+.rnode .rc ul{margin:6px 0 0 18px;font-size:13px;color:var(--ink2)}
+.rnode .rc li{margin:3px 0}
+
+/* ===== 筛选 ===== */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 14px}
+.fbtn{font-family:var(--sans);font-size:12.5px;border:1px solid var(--line);background:var(--paper);color:var(--ink2);padding:6px 14px;border-radius:20px;cursor:pointer;transition:.15s}
+.fbtn:hover{border-color:var(--blue);color:var(--blue)}
+.fbtn.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 16px;font-size:13px;margin:8px 0}
+.kv dt{color:var(--muted)} .kv dd{color:var(--ink2)}
+.callout{border-radius:10px;padding:14px 17px;font-size:13px;margin:14px 0;line-height:1.7}
+.co-blue{background:var(--blue-bg);border:1px solid #c7dcfb;color:#1e4795}
+.co-red{background:var(--red-bg);border:1px solid #f3c6c6;color:#991b1b}
+.co-amber{background:var(--orange-bg);border:1px solid #f0d9b0;color:#92400e}
+.foot{border-top:1px solid var(--line);margin-top:50px;padding-top:22px;color:var(--muted);font-size:12.5px}
+@media(max-width:900px){
+  nav.side{display:none} main{margin-left:0} .wrap{padding:0 20px 60px} .hero{padding:40px 22px}
+  .stats{grid-template-columns:repeat(2,1fr)} .grid2,.grid3,.matrix{grid-template-columns:1fr}
+  .rnode{grid-template-columns:1fr;gap:6px} .rnode .phase{text-align:left} .rnode .rail{display:none}
+  .fstep{margin-right:0;margin-bottom:18px;flex-basis:100%}.fstep::after{display:none}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="side">
+  <div class="brand">
+    <div class="logo">PAYMENT&nbsp;PLATFORM&nbsp;AUDIT</div>
+    <h1>支付体系架构诊断<br>与改造蓝图</h1>
+    <div class="sub">企业精神管理平台 · 前后端整体</div>
+  </div>
+  <a class="navlink" href="#summary"><span class="nidx">00</span>执行摘要</a>
+  <a class="navlink" href="#current"><span class="nidx">01</span>现状盘点</a>
+  <a class="navlink" href="#problems"><span class="nidx">02</span>架构与安全问题</a>
+  <a class="navlink" href="#target"><span class="nidx">03</span>目标架构与目录</a>
+  <a class="navlink" href="#gateway"><span class="nidx">04</span>支付渠道适配层</a>
+  <a class="navlink" href="#gap"><span class="nidx">05</span>支付功能缺口清单</a>
+  <a class="navlink" href="#admin"><span class="nidx">06</span>后台管理缺口</a>
+  <a class="navlink" href="#data"><span class="nidx">07</span>数据模型新增</a>
+  <a class="navlink" href="#roadmap"><span class="nidx">08</span>分阶段路线图</a>
+</nav>
+<main>
+<header class="hero">
+  <div class="kicker">Architecture Review · Payment Readiness</div>
+  <h2>从「内部记账钱包」到「支付宝 / 微信 真实支付体系」</h2>
+  <p class="lead">本报告基于对前后端代码的逐模块审查（NestJS 后端 85 个 TypeScript 文件、Vue3 前端 24 个视图），评估当前工程架构、模块化程度，并对照支付宝开放平台与微信支付 V3 的标准能力，列出对接真实支付前必须补齐的功能与后台管理项，给出可落地的分阶段改造路线。</p>
+  <div class="meta">
+    <span><span class="dot" style="background:#07c160"></span>后端：NestJS 12 · TypeORM · MySQL · JWT</span>
+    <span><span class="dot" style="background:#1677ff"></span>前端：Vue 3 · Vite · Element Plus · Pinia</span>
+    <span>生成日期：2026-10-18</span>
+  </div>
+  <div class="verdict">
+    <span class="badge">核心结论</span>
+    <p>当前系统已经实现了一套<b>工程质量不错的「站内余额钱包」</b>（事务、悲观锁、流水账、幂等、风控、对账都在），但<b>与支付宝 / 微信的真实网关对接度为 0</b>——「alipay / wechat」目前只是线下转账的一个标签，充值靠人工审核加钱、提现靠人工标记打款，没有下单接口、支付二维码、异步回调、验签、退款网关、对账文件和代付。要走向真实支付，需要新增一层<b>支付渠道适配层</b>与配套的订单 / 回调 / 退款 / 对账 / 代付体系，并补齐后台资金中心。</p>
+  </div>
+</header>
+<div class="wrap">
+
+<!-- ============ 00 执行摘要 ============ -->
+<section id="summary">
+  <div class="sec-head"><span class="sec-no">00</span><h3>执行摘要</h3></div>
+  <p class="sec-desc">五个关键数字，决定了改造的起点与重心。</p>
+  <div class="stats">
+    <div class="stat"><div class="num green">11</div><div class="lab">已具备的内部钱包能力域（余额 / 转账 / 红包 / 提现 / 账单 / 对账 / 风控…）</div></div>
+    <div class="stat"><div class="num red">0</div><div class="lab">真实支付宝 / 微信网关对接：无 SDK、无下单、无回调、无验签</div></div>
+    <div class="stat"><div class="num orange">1070</div><div class="lab">payments.service.ts 单文件行数，承担 7+ 职责，需拆分</div></div>
+    <div class="stat"><div class="num red">3</div><div class="lab">管理员接口越权（本报告已修复）：风控配置 / 提现审批 / 系统监控</div></div>
+  </div>
+
+  <h4 class="block">一句话判断：地基扎实，缺的是「支付网关」这一层和围绕它的资金运营后台</h4>
+  <div class="grid3">
+    <div class="card">
+      <h5 style="color:var(--green)">值得保留</h5>
+      <p>金额用「分」整数存储、事务 + 悲观行锁防超扣、每笔变动写流水、幂等键、雪花单号、支付密码、风控限额、人工对账修复——这些是支付系统的<b>正确内核</b>，对接真实渠道时直接复用。</p>
+    </div>
+    <div class="card">
+      <h5 style="color:var(--orange)">需要重构</h5>
+      <p>支付域巨型 Service、授权校验散落（已统一）、缺少渠道适配层与统一订单模型、用 setInterval 做定时任务、前端视图平铺、演示页与业务混杂。</p>
+    </div>
+    <div class="card">
+      <h5 style="color:var(--red)">必须新建</h5>
+      <p>收单下单 / 回调验签 / 退款 / 对账 / 代付（自动提现）/ 分账 / 证书密钥管理，以及后台的交易中心、退款中心、对账中心、渠道配置与资金报表。</p>
+    </div>
+  </div>
+  <div class="callout co-blue">本次已直接修复一处支付上线前必须堵的安全问题：新增统一的 <code>RolesGuard + @Roles()</code> 声明式授权，并给 3 个「只登录就能访问」的管理员接口补上管理员校验（已通过 <code>tsc --noEmit</code> 类型检查）。详见第 02 节。</div>
+</section>
+
+<!-- ============ 01 现状盘点 ============ -->
+<section id="current">
+  <div class="sec-head"><span class="sec-no">01</span><h3>现状盘点</h3></div>
+  <p class="sec-desc">先看清「已经有什么」，避免重复造轮子；再确认「钱现在是怎么流转的」。</p>
+
+  <h4 class="block">1.1 技术栈与工程现状</h4>
+  <div class="grid2">
+    <div class="card">
+      <h5>后端 back-end-backend</h5>
+      <dl class="kv">
+        <dt>框架</dt><dd>NestJS 12 + TypeScript 6（ESM）</dd>
+        <dt>数据</dt><dd>TypeORM 1.1 + MySQL（mysql2），20 个实体</dd>
+        <dt>认证</dt><dd>JWT（Access 15m / Refresh 7d）+ bcrypt + OAuth（Gitee/GitHub）</dd>
+        <dt>其他</dt><dd>Swagger、nodemailer、ali-oss、class-validator、Jest</dd>
+        <dt>部署</dt><dd>Dockerfile + docker-compose + healthcheck</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h5>前端 back-end-frontend</h5>
+      <dl class="kv">
+        <dt>框架</dt><dd>Vue 3.5 + Vite 8 + TypeScript</dd>
+        <dt>UI / 状态</dt><dd>Element Plus + Pinia + Vue Router 5</dd>
+        <dt>其他</dt><dd>axios、Three.js、TensorFlow.js、cropperjs</dd>
+        <dt>规模</dt><dd>24 个视图（含 9 个 Admin 后台页）、11 个 API 模块</dd>
+        <dt>支付页</dt><dd>仅 WalletView（钱包），无收银台 / 扫码 / 支付结果页</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h4 class="block">1.2 已具备的内部钱包能力（这部分是资产）</h4>
+  <div class="matrix">
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">账户余额</div><div class="d">user_balances 余额表，自动开户，版本号 + 行锁</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">线下充值 + 人工审核</div><div class="d">提交充值单→管理员批准→加余额写流水（渠道仅为标签）</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">账单支付扣款</div><div class="d">consume() 支持外部事务，余额不足回滚</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">用户间转账</div><div class="d">按邮箱收款，双流水，字典序加锁防死锁</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">红包</div><div class="d">发送 / 领取 / 超时退回，定时扫描</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">提现到银行卡</div><div class="d">绑卡、费率 0.1%、人工审核、<b>手动打款</b>、超时退回</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">退款 / 管理员调整</div><div class="d">refund() 加回余额；adminAdjust 正负调整</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">对账中心</div><div class="d">按用户 / 按日核对「余额=流水加总」，支持单边修复</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">风控配置</div><div class="d">转账 / 提现单笔、日累计限额可后台配置</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">支付密码 + KYC</div><div class="d">6 位独立支付密码、错误锁定、实名认证审核</div></div></div>
+    <div class="mx"><span class="ic tag t-have">已有</span><div><div class="t">幂等 + 单号</div><div class="d">idempotency_keys 表 + 雪花 ID + 业务单号生成器</div></div></div>
+    <div class="mx"><span class="ic tag t-part">基础</span><div><div class="t">站内信通知</div><div class="d">仅站内信；邮件只用于注册验证码，无短信 / 微信模板消息</div></div></div>
+  </div>
+
+  <h4 class="block warn">1.3 今天的「钱」是怎么流转的（关键：没有真实渠道）</h4>
+  <div class="flow">
+    <div class="fstep"><div class="n">充值</div><div class="t">用户提交申请</div><div class="d">选 alipay/wechat/bank 标签，填金额和备注，状态 pending，<b>不产生任何支付链接</b></div></div>
+    <div class="fstep"><div class="n">人工</div><div class="t">管理员后台审核</div><div class="d">管理员确认线下是否收到钱，点批准</div></div>
+    <div class="fstep"><div class="n">入账</div><div class="t">系统加余额</div><div class="d">事务内余额 + 金额、写 recharge 流水</div></div>
+    <div class="fstep"><div class="n">提现</div><div class="t">人工打款 + 标记</div><div class="d">用户申请→管理员线下转账→点「确认打款」，<b>系统不调用银行/支付宝/微信</b></div></div>
+  </div>
+  <div class="callout co-red">这意味着：系统现在是一个「记台账」的钱包，不是「收付款」的支付系统。真实场景下用户扫码付款、平台自动入账、自动退款、自动提现到零钱这些能力，全部缺失。</div>
+</section>
+
+<!-- ============ 02 架构与安全问题 ============ -->
+<section id="problems">
+  <div class="sec-head"><span class="sec-no">02</span><h3>架构与安全问题</h3></div>
+  <p class="sec-desc">按严重程度排列。P0 为安全问题（已在本次修复），P1 为对接支付前必须做的结构性重构，P2 为工程化增强。</p>
+
+  <h4 class="block danger">P0 · 越权漏洞（已修复）—— 授权逻辑散落、有遗漏</h4>
+  <p class="small muted" style="margin-bottom:6px">根因：<code>AuthGuard</code> 只做「认证」（登录态），「授权」（是否管理员）靠每个控制器方法手写 <code>assertAdmin()</code> / <code>requireAdmin()</code>，一旦漏写就是越权。</p>
+  <div class="issue">
+    <div class="sev"><span class="s" style="background:var(--red);color:#fff">P0</span></div>
+    <div class="body">
+      <h5>提现审批越权：普通用户可批准任意提现</h5>
+      <p class="loc">src/modules/payments/admin-withdraw.controller.ts · GET/POST admin/withdraw/*</p>
+      <p>待打款列表、手续费统计、批准打款、拒绝退回 4 个接口只有 <code>@UseGuards(AuthGuard)</code>，没有任何角色校验。任何登录用户都能查看待打款列表，并可直接批准自己的提现（无需真实打款就把流程走完）。</p>
+      <div class="fix">已修复：类级追加 @Roles('admin') + RolesGuard。</div>
+    </div>
+  </div>
+  <div class="issue">
+    <div class="sev"><span class="s" style="background:var(--red);color:#fff">P0</span></div>
+    <div class="body">
+      <h5>风控配置越权：普通用户可自行改限额</h5>
+      <p class="loc">src/modules/payments/admin-risk.controller.ts · GET/PUT admin/risk-config</p>
+      <p>转账 / 提现单笔、日累计限额属于风控红线，任何登录用户都能读取甚至修改（例如把转账限额改成无限大），风控形同虚设。</p>
+      <div class="fix">已修复：类级追加 @Roles('admin') + RolesGuard。</div>
+    </div>
+  </div>
+  <div class="issue">
+    <div class="sev"><span class="s" style="background:var(--red);color:#fff">P0</span></div>
+    <div class="body">
+      <h5>系统监控越权：服务器指标泄露</h5>
+      <p class="loc">src/modules/system/system.controller.ts · GET admin/system/metrics</p>
+      <p>CPU、内存、磁盘、网络流量、磁盘 IO 等主机监控信息，任何登录用户都能拉取，便于攻击者侦察。</p>
+      <div class="fix">已修复：类级追加 @Roles('admin') + RolesGuard。</div>
+    </div>
+  </div>
+  <div class="callout co-blue">修复方式（标准 NestJS 做法）：新增 <code>src/decorators/roles.decorator.ts</code> 与 <code>src/guards/roles.guard.ts</code>，用 <code>@UseGuards(AuthGuard, RolesGuard)</code> + <code>@Roles('admin' | 'super_admin')</code> 声明式收口，角色按 super_admin &gt; admin &gt; user 层级比较。建议后续把所有 admin 控制器从手写判断统一迁移到该装饰器。</div>
+
+  <h4 class="block warn">P1 · 结构性问题（对接支付前必须处理）</h4>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:20%">问题</th><th>证据 / 现状</th><th style="width:30%">改造方向</th></tr></thead>
+      <tbody>
+        <tr><td><b>支付域巨型 Service</b></td><td>payments.service.ts 共 1070 行，混合了充值、转账、退款、管理员调整、对账修复、支付密码、月度汇总、视图转换等 7+ 职责，难以测试与扩展</td><td>按子域拆为 recharge / transfer / wallet-ledger / payment-password / reconcile 等独立 service，复用同一个 LedgerService（记账原语）</td></tr>
+        <tr><td><b>缺少支付渠道适配层</b></td><td>没有任何渠道网关抽象；渠道（alipay/wechat）只作为枚举字符串存在，未来接多家、多商户会直接在业务代码里堆 if/else</td><td>定义 PaymentGateway 接口（下单/查询/关单/验签/退款/代付），AlipayGateway、WechatGateway 分别实现，业务层只依赖接口（见 04）</td></tr>
+        <tr><td><b>无真实支付订单模型</b></td><td>recharge_orders 是「线下审核单」，缺渠道订单号、prepay_id/二维码串、支付状态机、支付时间、渠道手续费、回调原文等字段</td><td>新增 payment_orders（统一收单）+ payment_notify_logs（回调流水），与内部余额入账解耦</td></tr>
+        <tr><td><b>定时任务靠 setInterval</b></td><td>scheduler.service、red-packet.scheduler、withdraw.scheduler、system.controller 均用 setInterval/onModuleInit 自造；多实例部署会重复执行、无失败重试、无持久化</td><td>引入 @nestjs/schedule（Cron）+ 基于 Redis/DB 的分布式锁；订单超时关单、回调补偿、对账改由任务驱动</td></tr>
+        <tr><td><b>后端缺少全局设施</b></td><td>无统一 /api 前缀、无全局异常过滤器（错误结构不统一）、无统一响应体、无全局限流（仅登录限流）、无 helmet、无压缩；Swagger 描述仍停留在旧接口</td><td>setGlobalPrefix('api')、全局 ExceptionFilter、ResponseInterceptor、ThrottlerGuard、helmet/compression；补全 OpenAPI 分组</td></tr>
+        <tr><td><b>分层/目录不彻底</b></td><td>mysql/ 实体与 src/modules 平级；guards/interceptors/middleware/common 散在 src 根；demo 示例模块仍在；业务代码内混用原生 SQL（DATE_FORMAT）</td><td>统一为 config / common / modules / database（entities+migrations）布局；实体按模块内聚；SQL 走 Repository/QueryBuilder</td></tr>
+        <tr><td><b>前端目录平铺</b></td><td>24 个视图全部堆在 views 根；Three/AI/ApiTest/Text/FileUpload 等演示页与业务混杂；components 残留 Vue 脚手架（TheWelcome/WelcomeItem/icons）；router 为单大文件</td><td>views 按域分 wallet/admin/bills/user，演示页移 play/；router 按域拆分；清理脚手架组件；新增收银台</td></tr>
+        <tr><td><b>前端守卫、后端此前失守</b></td><td>router 用 meta.admin/superAdmin 做了页面级守卫，但后端个别接口没校验（前端守卫可被绕过）</td><td>以本次后端 RolesGuard 为准，前端守卫只做体验隐藏；后续可用菜单/按钮权限指令</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4 class="block">P2 · 工程化与能力缺口</h4>
+  <div class="grid2">
+    <div class="card"><h5>无 Redis</h5><p>幂等、限流、验证码、锁、缓存全部压在 MySQL；支付回调高并发、扫码轮询、分布式锁都依赖 Redis，建议引入（或 Redlock）。</p></div>
+    <div class="card"><h5>无消息队列</h5><p>异步通知、回调后置入账、对账、退款/代付重试、通知下发应异步化，建议 BullMQ（基于 Redis）或接入云消息队列。</p></div>
+    <div class="card"><h5>无支付配置位</h5><p>.env 中没有支付宝 / 微信的 APP_ID、商户号、APIv3 密钥、应用私钥、平台证书、回调地址，密钥也没有加密存储方案。</p></div>
+    <div class="card"><h5>通知渠道单一</h5><p>支付成功/失败、到账、退款、代付结果仅站内信；真实支付需要短信、微信公众号/小程序模板消息、APP 推送。</p></div>
+    <div class="card"><h5>审核人记录有误</h5><p>admin-withdraw 取 <code>req.user.username</code>，而 AuthGuard 只挂 sub/roles/role，取不到值会恒为 'admin'，导致提现审核人无法追溯。应改用 sub 或补充用户名。</p></div>
+    <div class="card"><h5>无幂等兜底在网关层</h5><p>已有 idempotency_keys 表，但真实支付回调（可能重复推送、乱序）需要「验签 + 状态机 + 唯一约束 + 日志」四重幂等，目前只在业务申请层有。</p></div>
+  </div>
+</section>
+
+<!-- ============ 03 目标架构与目录 ============ -->
+<section id="target">
+  <div class="sec-head"><span class="sec-no">03</span><h3>目标架构与目录结构</h3></div>
+  <p class="sec-desc">遵循「按功能域模块化 + 分层 + 渠道可插拔」。原则：现有记账内核保留并下沉为 Ledger，支付网关单独成层；新增模块用 <span class="tag t-new">绿色</span> 标注。</p>
+
+  <h4 class="block">3.1 后端目标目录（NestJS 标准 · 按功能域）</h4>
+  <pre class="code">src/
+├── main.ts                      <span class="cmt">// 全局前缀 /api、异常过滤器、限流、helmet、swagger</span>
+├── app.module.ts
+├── config/                      <span class="cmt">// env 校验与配置（含支付渠道配置）</span>
+├── common/
+│   ├── decorators/              <span class="new">roles.decorator.ts（已新增）</span>
+│   ├── guards/                  <span class="new">auth.guard.ts · roles.guard.ts（已新增）· throttler.guard</span>
+│   ├── interceptors/            <span class="new">transform.interceptor（统一响应）· timeout</span>
+│   ├── filters/                 <span class="new">all-exceptions.filter（统一错误结构）</span>
+│   ├── pipes/  middleware/  utils/
+├── database/
+│   ├── data-source.ts           <span class="cmt">// 原 mysql/connect.ts</span>
+│   ├── entities/  migrations/   <span class="cmt">// 实体下沉；新增迁移走 migration，不再手改 init.sql</span>
+├── modules/
+│   ├── auth/  users/  kyc/
+│   ├── payments/                <span class="cmt">// ── 支付域聚合 ──</span>
+│   │   ├── wallet/              <span class="new">ledger.service（记账原语：锁行/写流水/对账，由现 payments.service 抽出）</span>
+│   │   ├── recharge/            <span class="cmt">// 线下充值审核（保留）</span>
+│   │   ├── transfer/  red-packet/  withdraw/
+│   │   ├── orders/              <span class="new">统一下单 / 收单 / 状态机 / 超时关单</span>
+│   │   ├── refunds/             <span class="new">退款单 / 退款回调 / 部分退款</span>
+│   │   ├── reconcile/           <span class="cmt">// 对账（含渠道账单下载解析）</span>
+│   │   ├── risk/
+│   │   ├── gateway/             <span class="new">渠道适配层（见 04）</span>
+│   │   │   ├── payment-gateway.interface.ts
+│   │   │   ├── gateway.registry.ts
+│   │   │   ├── alipay/          <span class="new">alipay.trade.* / fund.trans / 验签(RSA2) / 账单</span>
+│   │   │   └── wechat/          <span class="new">Native/JSAPI/APP/H5 / 商家转账 / APIv3验签 / 账单</span>
+│   │   └── admin/               <span class="new">支付后台控制器（订单/退款/代付/渠道/对账）</span>
+│   ├── bills/  notifications/
+│   ├── notify/                  <span class="new">短信 / 公众号模板消息 / 小程序订阅消息 / APP推送</span>
+│   ├── dict/  system/  admin-users/  logging/
+├── jobs/                        <span class="new">@nestjs/schedule 定时任务：关单/回调补偿/对账/红包退回</span>
+├── queues/                      <span class="new">BullMQ：回调、退款、代付、通知 异步处理器</span>
+└── integrations/                <span class="cmt">// oss / email / oauth 等第三方封装</span></pre>
+  <p class="tree-hint">迁移要点：① <code>mysql/</code> 改名 <code>database/</code> 并把实体按模块内聚（或保留集中 entities 但统一入口）；② 把 1070 行的 payments.service 按子域拆出，所有「锁行+写流水」收敛到 <code>WalletLedgerService</code>；③ 真实支付相关一律走 gateway 接口，业务代码不出现支付宝/微信 SDK 类型。</p>
+
+  <h4 class="block">3.2 前端目标目录（Vue3 · 按域分组）</h4>
+  <pre class="code">src/
+├── api/ (client.ts + modules/)      <span class="cmt">// 新增 orders.ts / refunds.ts / channels.ts</span>
+├── router/
+│   ├── index.ts
+│   └── modules/  <span class="new">wallet.ts · admin.ts · bills.ts（按域拆分，权限 meta 收敛）</span>
+├── stores/
+├── layouts/  (AppLayout  <span class="new">+ AdminLayout 后台布局</span>)
+├── components/  <span class="cmt">// 仅通用组件；删除 TheWelcome/WelcomeItem/icons 脚手架残留</span>
+├── views/
+│   ├── auth/  user/  bills/
+│   ├── wallet/      <span class="cmt">// WalletView 拆为 余额/转账/红包/提现/银行卡</span>
+│   ├── cashier/     <span class="new">收银台：选渠道 → 扫码/JSAPI → 轮询 → 支付结果页</span>
+│   ├── admin/
+│   │   ├── users/  kyc/  roles/  dict/  logs/  monitor/
+│   │   └── payment/ <span class="new">交易订单 / 充值审核 / 退款管理 / 代付审核 / 对账中心 / 渠道与密钥 / 资金报表</span>
+│   └── play/        <span class="cmt">// Three/AIdemo/ApiTest/Text/FileUpload 等演示页移入</span>
+├── composables/  utils/  types/  directives/  <span class="new">v-permission 按钮权限</span></pre>
+
+  <h4 class="block">3.3 支付域逻辑分层（对接渠道时严格遵守）</h4>
+  <div class="layers">
+    <div class="layer l1"><div class="lh">接入层 Controller <span class="lt">HTTP / 回调</span></div><div class="boxes"><span class="box">用户端下单/查询</span><span class="box">管理员后台</span><span class="box">渠道异步回调（免登录、验签）</span></div></div>
+    <div class="layer l2"><div class="lh">应用服务层 Application <span class="lt">用例编排 / 事务 / 状态机</span></div><div class="boxes"><span class="box">OrderService</span><span class="box">RefundService</span><span class="box">WithdrawService</span><span class="box">ReconcileService</span></div></div>
+    <div class="layer l3"><div class="lh">领域服务层 Domain <span class="lt">不依赖具体渠道</span></div><div class="boxes"><span class="box">WalletLedger（记账原语）</span><span class="box">PaymentOrder 聚合/状态机</span><span class="box">PaymentNo 单号</span><span class="box">Risk 风控</span><span class="box">幂等</span></div></div>
+    <div class="layer l4"><div class="lh">渠道适配层 Gateway <span class="lt">可插拔</span></div><div class="boxes"><span class="box">PaymentGateway 接口</span><span class="box">AlipayGateway</span><span class="box">WechatGateway</span><span class="box">MockGateway（沙箱/测试）</span></div></div>
+    <div class="layer l5"><div class="lh">基础设施层 Infrastructure <span class="lt">DB / Redis / MQ / 外部SDK</span></div><div class="boxes"><span class="box">TypeORM</span><span class="box">Redis 锁/缓存</span><span class="box">BullMQ 队列</span><span class="box">alipay-sdk / wechatpay-node</span><span class="box">OSS/短信</span></div></div>
+  </div>
+  <div class="callout co-amber">关键纪律：<b>钱怎么记（Ledger）与从哪个渠道收（Gateway）必须解耦</b>。回调成功后，Gateway 只返回「标准化支付结果」，由 OrderService 调 Ledger 入账，渠道异常不允许直接改余额。这样换渠道、加多商户、做对账都不会动到记账内核。</div>
+</section>
+
+<!-- ============ 04 支付渠道适配层 ============ -->
+<section id="gateway">
+  <div class="sec-head"><span class="sec-no">04</span><h3>支付渠道适配层设计</h3></div>
+  <p class="sec-desc">用一个统一接口屏蔽支付宝与微信的差异，业务层只面向接口编程；先实现 MockGateway 跑通全链路，再接真实沙箱。</p>
+
+  <h4 class="block">4.1 统一网关接口（建议契约）</h4>
+  <pre class="code"><span class="cmt">// modules/payments/gateway/payment-gateway.interface.ts</span>
+export interface PaymentGateway {
+  readonly channel: 'alipay' | 'wechat';
+  /** 统一下单：按场景返回二维码串 / 跳转URL / JSAPI(prepay)参数 */
+  createPayment(cmd: CreatePaymentCmd): Promise&lt;PaymentCredential&gt;;
+  /** 主动查单（回调丢失时的兜底补偿） */
+  queryOrder(outTradeNo: string): Promise&lt;GatewayOrderResult&gt;;
+  /** 关闭未支付订单（超时关单，防止重复支付） */
+  closeOrder(outTradeNo: string): Promise&lt;void&gt;;
+  /** 验证异步通知签名并解密（微信 APIv3 需 AES-GCM 解密），返回标准化结果 */
+  parseAndVerifyNotify(raw: Buffer, headers: Record&lt;string,string&gt;): Promise&lt;NotifyResult&gt;;
+  /** 退款（支持部分退，out_request_no 幂等） */
+  refund(cmd: RefundCmd): Promise&lt;RefundResult&gt;;
+  queryRefund(refundNo: string): Promise&lt;RefundResult&gt;;
+  /** 代付 / 提现到账（微信商家转账到零钱、支付宝单笔转账） */
+  transfer(cmd: PayoutCmd): Promise&lt;PayoutResult&gt;;
+  /** 下载并解析对账单（交易账单 / 资金账单） */
+  downloadBill(date: string, type: 'trade'|'fund'): Promise&lt;BillRecord[]&gt;;
+  /** 生成 / 应答回调（success / 应答报文） */
+  ackNotify(): string | { code: string };
+}</pre>
+
+  <h4 class="block">4.2 渠道 ↔ 支付场景能力对照</h4>
+  <div class="tablewrap">
+    <table class="tight">
+      <thead><tr><th style="width:18%">支付场景</th><th>支付宝接口 / 产品</th><th>微信支付接口 / 产品</th><th style="width:12%">适用端</th></tr></thead>
+      <tbody>
+        <tr><td><b>扫码支付（主扫）</b></td><td class="fn">当面付 alipay.trade.precreate（生成二维码）</td><td class="fn">Native 下单 /v3/pay/transactions/native</td><td>PC/收银台</td></tr>
+        <tr><td><b>PC 网站支付</b></td><td class="fn">电脑网站 alipay.trade.page.pay（跳表单）</td><td class="fn">无对应，走 Native 扫码</td><td>Web 桌面</td></tr>
+        <tr><td><b>手机 H5</b></td><td class="fn">手机网站 alipay.trade.wap.pay</td><td class="fn">H5 支付 /v3/pay/transactions/h5</td><td>移动浏览器</td></tr>
+        <tr><td><b>APP 支付</b></td><td class="fn">APP 支付 alipay.trade.app.pay（签名串）</td><td class="fn">APP 下单 /v3/pay/transactions/app</td><td>原生 App</td></tr>
+        <tr><td><b>JSAPI / 小程序</b></td><td class="fn">生活号/小程序 JSAPI（trade.create）</td><td class="fn">JSAPI /v3/pay/transactions/jsx（需 openid）</td><td>公众号/小程序</td></tr>
+        <tr><td><b>付款码（被扫）</b></td><td class="fn">当面付 micropay（条码支付）</td><td class="fn">付款码 /v3/pay/transactions/codepay</td><td>门店/商户 App</td></tr>
+        <tr><td><b>退款</b></td><td class="fn">alipay.trade.refund / .fastpay.refund.query</td><td class="fn">/v3/refund/domestic/refunds、/query</td><td>后端</td></tr>
+        <tr><td><b>代付（提现）</b></td><td class="fn">alipay.fund.trans.uni.transfer / commonquery</td><td class="fn">商家转账到零钱 /v3/transfer/batches</td><td>后端</td></tr>
+        <tr><td><b>分账</b></td><td class="fn">分账关系/分账接口（royalty）</td><td class="fn">/v3/profitsharing/orders、receivers</td><td>后端/平台</td></tr>
+        <tr><td><b>对账账单</b></td><td class="fn">alipay.data.dataservice.bill.downloadurl.query</td><td class="fn">/v3/bill/tradebill、/fundflowbill</td><td>定时任务</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="small muted">注：接口名以官方最新文档为准（微信为 V3 API，需商户 API 证书 + APIv3 密钥 + 平台证书；支付宝为开放平台 RSA2 签名）。上线第一步建议只做「Native 扫码 + 异步通知 + 查单 + 关单」，跑通后再扩。</p>
+
+  <h4 class="block">4.3 收单闭环（一笔真实充值的完整链路）</h4>
+  <div class="flow">
+    <div class="fstep"><div class="n">1</div><div class="t">下单</div><div class="d">用户选渠道/场景，后端建 payment_order（幂等），调 gateway.createPayment 拿二维码/JSAPI 参数</div></div>
+    <div class="fstep"><div class="n">2</div><div class="t">支付</div><div class="d">前端展示二维码或拉起支付宝/微信，用户完成付款</div></div>
+    <div class="fstep"><div class="n">3</div><div class="t">异步通知</div><div class="d">渠道回调 notify_url，后端验签→解密→记日志→状态机判断→幂等入账→应答</div></div>
+    <div class="fstep"><div class="n">4</div><div class="t">兜底查单</div><div class="d">前端轮询 + 后端定时 queryOrder 补偿漏单；超时未支付 closeOrder</div></div>
+  </div>
+  <div class="flow">
+    <div class="fstep"><div class="n">5</div><div class="t">入账</div><div class="d">OrderService 调 WalletLedger：余额 += 金额、写 recharge 流水（与现有内核一致）</div></div>
+    <div class="fstep"><div class="n">6</div><div class="t">通知</div><div class="d">站内信 + 短信/模板消息告知到账</div></div>
+    <div class="fstep"><div class="n">7</div><div class="t">退款</div><div class="d">原路退回（退款单 + 退款回调 + 扣回余额）</div></div>
+    <div class="fstep"><div class="n">8</div><div class="t">对账</div><div class="d">T+1 下载渠道账单，与系统订单/流水三方勾对账</div></div>
+  </div>
+
+  <h4 class="block">4.4 统一订单状态机（内部支付单，不复用线下审核单）</h4>
+  <pre class="code">CREATED ──支付成功(notify/query)──▶ <span class="new">PAID</span> ──全额退款──▶ REFUNDED
+   │                                └──部分退款──▶ PARTIAL_REFUNDED
+   ├──用户取消/超时(关单)──▶ CLOSED
+   └──支付失败/渠道异常──▶ FAILED（记录原因，允许重新发起）
+<span class="cmt">// 状态流转必须在事务内 + 行锁，且仅允许上述合法迁移；重复 notify 命中 PAID 直接幂等返回，不重复入账。</span></pre>
+</section>
+
+<!-- ============ 05 支付功能缺口清单 ============ -->
+<section id="gap">
+  <div class="sec-head"><span class="sec-no">05</span><h3>支付宝 / 微信支付功能缺口清单</h3></div>
+  <p class="sec-desc">对照两大平台标准能力逐项核对，共 45 项。可按状态与优先级筛选；优先级用于排期（P0=收单闭环必需，P1=资金闭环，P2=运营完善，P3=扩展/合规）。</p>
+  <div class="filters" id="gapStatusFilters">
+    <button class="fbtn on" data-st="all">全部</button>
+    <button class="fbtn" data-st="miss">缺失</button>
+    <button class="fbtn" data-st="part">部分具备</button>
+    <button class="fbtn" data-st="have">已有</button>
+  </div>
+  <div class="filters" id="gapPrioFilters">
+    <button class="fbtn on" data-pr="all">全部优先级</button>
+    <button class="fbtn" data-pr="P0">P0</button>
+    <button class="fbtn" data-pr="P1">P1</button>
+    <button class="fbtn" data-pr="P2">P2</button>
+    <button class="fbtn" data-pr="P3">P3</button>
+  </div>
+  <div class="tablewrap">
+    <table class="tight">
+      <thead><tr><th style="width:11%">功能域</th><th style="width:20%">能力</th><th style="width:23%">支付宝</th><th style="width:23%">微信支付</th><th style="width:8%">现状</th><th style="width:7%">优先级</th><th>落地说明</th></tr></thead>
+      <tbody id="gapBody"></tbody>
+    </table>
+  </div>
+  <div class="legend">
+    <span><span class="tag t-miss">缺失</span> 完全没有</span>
+    <span><span class="tag t-part">部分</span> 有站内近似物，缺真实渠道</span>
+    <span><span class="tag t-have">已有</span> 可直接复用</span>
+  </div>
+</section>
+
+<!-- ============ 06 后台管理缺口 ============ -->
+<section id="admin">
+  <div class="sec-head"><span class="sec-no">06</span><h3>后台管理缺口（资金运营中心）</h3></div>
+  <p class="sec-desc">现有 9 个后台页覆盖了用户/权限/审核/站内对账，但围绕「真实渠道资金」的运营后台几乎是空白。</p>
+  <div class="grid3">
+    <div class="card"><h5>已具备（保留）</h5><p>用户管理、角色管理、KYC 审核、线下充值审核、提现人工审核、站内钱包对账、风控规则、数据字典、审计日志、主机监控。</p></div>
+    <div class="card"><h5>需升级</h5><p>「钱包对账」要从单纯的站内账实核对，升级为<b>系统订单 ↔ 站内流水 ↔ 渠道账单</b>的三方勾对；提现审核要对接自动代付状态。</p></div>
+    <div class="card"><h5>需新建</h5><p>交易订单、退款、代付、对账、渠道配置、资金报表、风控工单、支付监控、通知模板等资金中心模块。</p></div>
+  </div>
+  <div class="tablewrap">
+    <table class="tight">
+      <thead><tr><th style="width:18%">后台模块</th><th style="width:40%">核心功能</th><th style="width:12%">现状</th><th>优先级</th></tr></thead>
+      <tbody>
+        <tr><td><b>交易订单中心</b></td><td>全渠道支付单查询（渠道/状态/时间/金额/用户）、订单详情含渠道单号与回调原文、手动补单（触发查单）、重新关单、订单导出</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p0">P0</span></td></tr>
+        <tr><td><b>渠道与商户配置</b></td><td>APPID/商户号/APIv3 密钥/应用私钥/证书的<b>加密存储</b>、沙箱与正式环境、回调地址、渠道费率、平台证书自动更新、证书到期提醒、多商户</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p0">P0</span></td></tr>
+        <tr><td><b>退款管理</b></td><td>退款单列表、发起/审核原路退款（全额/部分）、退款状态与回调、失败重试、退款流水</td><td><span class="tag t-part">仅站内退款</span></td><td><span class="tag t-p1">P1</span></td></tr>
+        <tr><td><b>代付 / 提现中心</b></td><td>提现申请、自动代付批次与状态、失败重试、银行/支付宝/微信账户、电子回单、手续费统计、人工兜底</td><td><span class="tag t-part">仅人工标记</span></td><td><span class="tag t-p1">P1</span></td></tr>
+        <tr><td><b>对账中心（升级）</b></td><td>T+1 自动下载/导入渠道账单、三方勾对、长款短款差错工单、挂账与核销、对账报告、渠道手续费核对</td><td><span class="tag t-part">仅站内核对</span></td><td><span class="tag t-p1">P1</span></td></tr>
+        <tr><td><b>资金报表</b></td><td>交易/充值/提现/退款的日/月汇总、支付成功率、退款率、渠道手续费成本、净收入、商户余额、导出 Excel</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p1">P1</span></td></tr>
+        <tr><td><b>风控运营</b></td><td>规则配置（已有）+ 黑白名单、异常交易拦截记录、可疑工单、账户冻结/解冻、限额调整、大额人工复核</td><td><span class="tag t-part">基础限额</span></td><td><span class="tag t-p1">P1</span></td></tr>
+        <tr><td><b>支付监控告警</b></td><td>下单成功率、回调失败率、未对账订单、代付失败、商户余额不足、证书/密钥到期；告警到短信/邮件/IM</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p2">P2</span></td></tr>
+        <tr><td><b>通知模板</b></td><td>支付成功/退款/到账的短信、公众号模板消息、小程序订阅消息模板与发送记录</td><td><span class="tag t-part">仅站内信</span></td><td><span class="tag t-p2">P2</span></td></tr>
+        <tr><td><b>资金操作与审批流</b></td><td>大额调整/代付/退款的<b>双人复核</b>、金额阈值审批、资金类操作专项审计（谁在何时批了哪笔）</td><td><span class="tag t-part">有审计日志</span></td><td><span class="tag t-p2">P2</span></td></tr>
+        <tr><td><b>发票管理</b></td><td>开票申请、抬头管理、订单关联开票（按业务需要）</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p3">P3</span></td></tr>
+        <tr><td><b>分账 / 营销券</b></td><td>分账接收方与分账单、商家券/代金券活动（平台型业务才需要）</td><td><span class="tag t-miss">缺失</span></td><td><span class="tag t-p3">P3</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 07 数据模型 ============ -->
+<section id="data">
+  <div class="sec-head"><span class="sec-no">07</span><h3>数据模型新增建议</h3></div>
+  <p class="sec-desc">真实支付与「线下审核单」是两套单据，建议新增而非改造 recharge_orders，避免污染现有人工流程。所有金额继续沿用「分」整数 + 业务单号 + 幂等。</p>
+  <div class="tablewrap">
+    <table class="tight">
+      <thead><tr><th style="width:22%">新增表</th><th>关键字段 / 作用</th></tr></thead>
+      <tbody>
+        <tr><td><code>payment_orders</code> 统一收单订单</td><td>out_trade_no（唯一）、user_id、scene、channel、subject、amount_cents、status 状态机、channel_trade_no（渠道单号）、prepay_id/credential、paid_at、expired_at、fee_cents、idempotency_key、商户号、唯一索引(channel,channel_trade_no)</td></tr>
+        <tr><td><code>payment_notify_logs</code> 回调日志</td><td>channel、out_trade_no、notify_id、原始报文、请求头、验签结果、解密结果、处理状态、处理耗时、接收时间；用于排障与幂等</td></tr>
+        <tr><td><code>payment_refunds</code> 退款单</td><td>out_refund_no（唯一）、out_trade_no、total/refund_cents、reason、status、channel_refund_no、success_time、审核人、部分退次数</td></tr>
+        <tr><td><code>payout_orders</code> 代付单</td><td>提现/转账到零钱，扩展现有 withdrawals：payee 账户（openid/支付宝账号/银行卡）、渠道批次号、status、回单号、失败原因、重试次数</td></tr>
+        <tr><td><code>channel_accounts</code> 渠道商户配置</td><td>channel、mch_id、app_id、商户私钥/APIv3Key/证书（KMS 加密存储）、env(sandbox/prod)、notify_url、费率、启用状态、多租户/多商户</td></tr>
+        <tr><td><code>reconcile_batches / _items</code></td><td>对账批次（日期/渠道/账单文件）与明细勾对：系统单 vs 渠道单，差异类型（长款/短款/错金额/状态不符）、处理状态</td></tr>
+        <tr><td><code>risk_events / blacklist</code></td><td>风控命中事件、规则快照、黑名单（用户/设备/账户），与现有 risk_configs 配合</td></tr>
+        <tr><td><code>split_* </code>（P3）</td><td>分账接收方、分账订单与明细，仅在平台抽佣多方分账时需要</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout co-blue">关系：payment_orders 支付成功后调用现有 <code>balance_transactions</code>（recharge 流水）入账；refunds 退款成功后写 consume/refund 流水；payout_orders 与现有 withdrawals 共用 Ledger。这样既不动现有记账内核，又能把「真实渠道单据」与「站内资金流水」通过 ref_type/ref_id 关联，天然可对账。</div>
+</section>
+
+<!-- ============ 08 路线图 ============ -->
+<section id="roadmap">
+  <div class="sec-head"><span class="sec-no">08</span><h3>分阶段落地路线图</h3></div>
+  <p class="sec-desc">先修地基与安全，再用最小闭环（扫码收单）打通真实渠道，随后补齐退款、对账、代付，最后做资金运营后台与扩展能力。每阶段都可独立上线、独立验证。</p>
+  <div class="road">
+    <div class="rnode done">
+      <div class="phase"><div class="p">P0 安全</div><div class="w">已完成</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>授权收口、堵住越权 <span class="tag t-have">已落地</span></h5>
+        <ul><li>新增 RolesGuard + @Roles，修复风控配置 / 提现审批 / 系统监控 3 处越权</li><li>tsc --noEmit 通过；建议补针对越权的 e2e 用例并回归</li></ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 1</div><div class="w">约 1–2 周</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>地基与模块化重构 <span class="tag t-p1">P1</span></h5>
+        <ul>
+          <li>后端：全局前缀 /api、全局异常过滤器、统一响应、Throttler 限流、helmet；拆分 1070 行 payments.service，抽出 WalletLedger</li>
+          <li>引入 Redis（锁/缓存/幂等）、@nestjs/schedule（替换 setInterval）、BullMQ；补 .env 支付配置位与密钥加密方案</li>
+          <li>前端：views 按域分组、演示页移入 play、清理脚手架、router 拆分、收银台与后台布局骨架</li>
+        </ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 2</div><div class="w">约 2–3 周</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>收单最小闭环（先沙箱）<span class="tag t-p0">P0</span></h5>
+        <ul>
+          <li>实现 PaymentGateway 接口 + MockGateway；接支付宝当面付（precreate）与微信 Native 扫码</li>
+          <li>payment_orders 下单、异步回调（RSA2 / APIv3 验签解密）、回调日志、四重幂等、查单兜底、超时关单</li>
+          <li>前端收银台：选渠道 → 二维码 → 轮询 → 支付结果页；支付成功自动入余额（复用 Ledger）</li>
+        </ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 3</div><div class="w">约 1–2 周</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>退款 + 对账（资金闭环）<span class="tag t-p1">P1</span></h5>
+        <ul>
+          <li>原路退款（全额/部分）、退款回调与查询、后台退款审核与重试</li>
+          <li>T+1 下载渠道交易/资金账单，三方勾对，差错工单与核销，手续费成本核算</li>
+        </ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 4</div><div class="w">约 2–3 周</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>自动代付（提现）+ 多场景 <span class="tag t-p1">P1</span></h5>
+        <ul>
+          <li>微信商家转账到零钱、支付宝单笔转账到账户；代付状态查询、失败重试、电子回单</li>
+          <li>打通 KYC 实名一致性；按业务补 H5 / APP / JSAPI（公众号/小程序）</li>
+        </ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 5</div><div class="w">持续</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>资金运营后台 + 风控 + 可观测 <span class="tag t-p2">P2</span></h5>
+        <ul>
+          <li>交易订单 / 退款 / 代付 / 对账 / 渠道配置 / 资金报表；双人复核与资金专项审计</li>
+          <li>黑白名单与风险工单、支付链路监控告警、短信/模板消息通知</li>
+        </ul></div>
+    </div>
+    <div class="rnode">
+      <div class="phase"><div class="p">阶段 6</div><div class="w">按需</div></div>
+      <div class="rail"><div class="pt"></div></div>
+      <div class="rc"><h5>扩展能力 <span class="tag t-p3">P3</span></h5>
+        <ul>
+          <li>分账、平台抽佣、商家券/代金券；多商户/服务商进件；多币种与跨境；发票与争议处理</li>
+        </ul></div>
+    </div>
+  </div>
+
+  <div class="callout co-amber">上线前置条件（业务/资质，非代码）：企业支付宝商户、微信支付商户号及对应产品开通（Native/JSAPI/商家转账等）、ICP 备案与 HTTPS 公网回调地址、支付服务协议与隐私政策、商户证书与密钥安全托管。这些审批周期可能长于开发，建议阶段 1 就并行启动。</div>
+
+  <div class="foot">
+    本报告基于对 back-end-backend（NestJS）与 back-end-frontend（Vue3）源码的静态审查整理，接口名称以支付宝开放平台、微信支付 V3 官方最新文档为准；排期为基于当前代码规模的工程估算，需结合团队人力与商户资质审批调整。已完成的代码改动：新增 <code>src/decorators/roles.decorator.ts</code>、<code>src/guards/roles.guard.ts</code>，并为风控配置、提现审批、系统监控三个后台控制器补上管理员授权。
+  </div>
+</section>
+</div>
+</main>
+</div>
+
+<script>
+// ===== 支付功能缺口数据（共 45 项，对照支付宝开放平台 / 微信支付 V3）=====
+var GAP = [
+ // domain, name, alipay, wechat, status(miss/part/have), prio, note
+ ["收单","统一收单下单服务","服务端建单（trade.create 前置）","统一下单 /v3/pay/transactions/*","miss","P0","建 payment_order、金额校验、幂等单号"],
+ ["收单","Native 扫码 / 当面付","alipay.trade.precreate（二维码）","/v3/pay/transactions/native","miss","P0","PC 充值首选，返回二维码串"],
+ ["收单","PC 网页支付","alipay.trade.page.pay（跳表单）","无对应，走 Native 扫码","miss","P1","桌面浏览器跳转支付"],
+ ["收单","手机 H5 支付","alipay.trade.wap.pay","/v3/pay/transactions/h5","miss","P1","移动浏览器场景"],
+ ["收单","APP 支付","alipay.trade.app.pay","/v3/pay/transactions/app","miss","P2","有原生 App 时再做"],
+ ["收单","JSAPI / 小程序","生活号/小程序 JSAPI","/v3/pay/transactions/jsapi（需 openid）","miss","P2","公众号/小程序场景"],
+ ["收单","付款码被扫","alipay.trade.pay（micropay）","付款码 codepay","miss","P3","线下门店/收银台硬件"],
+ ["收单","前端收银台","返回支付参数","返回支付参数","miss","P0","选渠道 → 二维码 → 轮询 → 结果页"],
+ ["收单","主动查单","alipay.trade.query","/v3/pay/transactions/out-trade-no","miss","P0","回调漏单的兜底补偿"],
+ ["收单","超时关单","alipay.trade.close",".../out-trade-no/close","miss","P0","定时任务，防止重复支付"],
+ ["收单","订单状态机","内部实现","内部实现","miss","P0","合法状态迁移 + 事务 + 行锁"],
+ ["回调","异步通知接收接口","notify_url（表单异步）","notify_url（JSON + 签名头）","miss","P0","公网可达、免登录、必须幂等"],
+ ["回调","支付宝 RSA2 验签","支付宝公钥验签","—","miss","P0","防止伪造回调"],
+ ["回调","微信 APIv3 验签解密","—","Wechatpay-Signature + AEAD_AES_256_GCM","miss","P0","平台证书验签 + 资源解密"],
+ ["回调","回调日志与幂等","—","—","part","P0","业务层已有幂等，缺回调日志与状态机"],
+ ["回调","回调应答规范","纯文本 success","HTTP 200/4xx/5xx + code","miss","P0","应答失败渠道会重复推送"],
+ ["退款","原路退款发起","alipay.trade.refund","/v3/refund/domestic/refunds","miss","P1","现仅站内余额加钱，并非原路退回"],
+ ["退款","部分 / 多次退款","refund_amount 可小于订单","amount 可小于订单金额","miss","P2","退款单号幂等"],
+ ["退款","退款查询 / 通知","fastpay.refund.query","/v3/refund/domestic/refunds/{id}","miss","P1","获取异步退款结果"],
+ ["退款","后台退款审核","—","—","miss","P1","双人复核、金额阈值"],
+ ["对账","渠道账单下载","bill.downloadurl.query","/v3/bill/tradebill、/fundflowbill","miss","P1","T+1 定时下载"],
+ ["对账","三方勾对","—","—","part","P1","已有站内账实核对，缺渠道账单勾对"],
+ ["对账","差错处理工单","—","—","miss","P2","长款/短款/错金额/状态不符核销"],
+ ["对账","渠道手续费核算","—","—","part","P2","现仅提现手续费，缺渠道费率成本"],
+ ["代付","微信转账到零钱","—","/v3/transfer/batches（商家转账）","miss","P1","提现自动化的主力通道"],
+ ["代付","支付宝转账到账户","alipay.fund.trans.uni.transfer","—","miss","P1","提现到支付宝余额"],
+ ["代付","银行卡代发","银行通道 / 资金授权","企业付款到银行卡（历史）","miss","P3","依赖银行代发资质"],
+ ["代付","代付查询 / 电子回单","fund.trans.commonquery + 回单","转账批次/明细查询、电子回单","miss","P2","状态确认与凭证留存"],
+ ["代付","提现实名一致性","—","收款方需实名/开户校验","part","P1","已有 KYC，需与渠道核验打通"],
+ ["分账","分账接收方/关系","royalty 关系绑定","/v3/profitsharing/receivers","miss","P3","平台型多方分账"],
+ ["分账","分账发起/查询/完结","trade.order.settle 等","/v3/profitsharing/orders","miss","P3","平台抽佣结算"],
+ ["分账","平台抽佣联动","—","—","miss","P3","与订单/结算打通"],
+ ["营销","优惠券 / 商家券","支付宝券、营销活动","商家券/代金券/小程序券","miss","P3","营销增长，可选"],
+ ["基础","证书/密钥管理","应用私钥 + 支付宝公钥","商户私钥/APIv3Key/平台证书","miss","P0","加密存储、轮换、到期提醒"],
+ ["基础","沙箱 / 正式环境","开放平台沙箱","微信支付仿真沙箱","miss","P0","环境隔离与一键切换"],
+ ["基础","渠道/商户配置",".env + 后台",".env + 后台","miss","P0","多商户、回调地址、费率"],
+ ["基础","支付结果通知","—","—","part","P1","仅站内信，缺短信/模板消息/推送"],
+ ["基础","限流 / 防重放 / nonce","—","timestamp + nonce 签名","part","P1","仅登录限流，缺接口级防护"],
+ ["基础","Redis 缓存/分布式锁","—","—","miss","P1","回调并发、定时任务、扫码轮询"],
+ ["基础","异步消息队列","—","—","miss","P1","回调后置、退款、对账、重试"],
+ ["基础","链路追踪与告警","—","—","part","P2","有 HTTP 日志，缺支付指标告警"],
+ ["合规","实名认证打通","—","渠道实名校验","part","P1","有 KYC 流程，需二/三要素核验"],
+ ["合规","反洗钱/限额/黑名单","—","—","part","P2","有基础限额，缺黑名单/可疑交易"],
+ ["合规","争议/拒付/投诉","—","—","miss","P3","售后与资金争议处理"],
+ ["合规","资质/协议/备案","支付产品签约","商户号 + 产品开通","miss","P2","ICP、支付协议、HTTPS，上线前置"]
+];
+
+var ST={st:"all",pr:"all"};
+var stLabel={miss:['缺失','t-miss'],part:['部分','t-part'],have:['已有','t-have']};
+var prLabel={P0:'t-p0',P1:'t-p1',P2:'t-p2',P3:'t-p3'};
+
+function renderGap(){
+  var body=document.getElementById('gapBody');
+  var rows=GAP.filter(function(r){
+    var stOk=(ST.st==='all'||r[4]===ST.st);
+    var prOk=(ST.pr==='all'||r[5]===ST.pr);
+    return stOk&&prOk;
+  });
+  if(!rows.length){
+    body.innerHTML='<tr><td colspan="7" style="text-align:center;color:#6b7a8d;padding:26px">当前筛选条件下没有条目</td></tr>';
+    return;
+  }
+  body.innerHTML=rows.map(function(r){
+    var s=stLabel[r[4]];
+    return '<tr>'
+      +'<td><span class="chip">'+r[0]+'</span></td>'
+      +'<td><b>'+r[1]+'</b></td>'
+      +'<td class="fn">'+r[2]+'</td>'
+      +'<td class="fn">'+r[3]+'</td>'
+      +'<td><span class="tag '+s[1]+'">'+s[0]+'</span></td>'
+      +'<td><span class="tag '+prLabel[r[5]]+'">'+r[5]+'</span></td>'
+      +'<td class="small">'+r[6]+'</td>'
+      +'</tr>';
+  }).join('');
+}
+function bindGroup(id,key){
+  document.getElementById(id).addEventListener('click',function(e){
+    var b=e.target.closest('.fbtn'); if(!b)return;
+    this.querySelectorAll('.fbtn').forEach(function(x){x.classList.remove('on')});
+    b.classList.add('on');
+    ST[key]=b.getAttribute(key==='st'?'data-st':'data-pr');
+    renderGap();
+  });
+}
+bindGroup('gapStatusFilters','st');
+bindGroup('gapPrioFilters','pr');
+renderGap();
+
+// ===== 侧边导航高亮 =====
+var links=Array.prototype.slice.call(document.querySelectorAll('nav.side a.navlink'));
+var secs=links.map(function(a){return document.querySelector(a.getAttribute('href'));});
+function onScroll(){
+  var pos=window.scrollY+120, idx=0;
+  secs.forEach(function(s,i){ if(s&&s.offsetTop<=pos) idx=i; });
+  links.forEach(function(a,i){a.classList.toggle('active',i===idx);});
+}
+window.addEventListener('scroll',onScroll,{passive:true});
+onScroll();
+</script>
+</body>
+</html>

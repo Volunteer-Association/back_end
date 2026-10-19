@@ -1,0 +1,105 @@
+{
+  "src": "D:\\EnterpriseSpirit\\back-end\\docs\\支付体系架构诊断与改造蓝图.html",
+  "url": "file:///D:/EnterpriseSpirit/back-end/docs/%E6%94%AF%E4%BB%98%E4%BD%93%E7%B3%BB%E6%9E%B6%E6%9E%84%E8%AF%8A%E6%96%AD%E4%B8%8E%E6%94%B9%E9%80%A0%E8%93%9D%E5%9B%BE.html",
+  "outdir": "D:\\EnterpriseSpirit\\back-end\\docs\\_shots",
+  "include": [
+    "lint",
+    "screenshots",
+    "structure"
+  ],
+  "shots": {
+    "desktop": {
+      "slices": [
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p1of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p2of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p3of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p4of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p5of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p6of7.jpg",
+        "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p7of7.jpg"
+      ],
+      "sliceHint": "按顺序 Read slices 里的各分片。",
+      "truncated": false,
+      "structure": {
+        "title": "支付体系架构诊断与改造蓝图 · 企业精神管理平台",
+        "firstH1": "支付体系架构诊断与改造蓝图",
+        "viewport": {
+          "w": 500,
+          "h": 450
+        },
+        "fullpage": {
+          "w": 500,
+          "h": 22129
+        },
+        "counts": {
+          "section": 9,
+          "h1": 1,
+          "h2": 1,
+          "img": 0,
+          "canvas": 0,
+          "svg": 0,
+          "links": 9,
+          "buttons": 9
+        }
+      },
+      "consoleErrors": [],
+      "consoleWarnings": [],
+      "horizontalOverflow": [],
+      "resourceErrors": [],
+      "reportSource": "cdp"
+    }
+  },
+  "engine": "chrome_cli",
+  "chromiumExec": "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+  "engineDegraded": true,
+  "engineDegradedReason": "playwright 未装",
+  "elapsedSec": 6.2,
+  "schemaVersion": 2,
+  "status": "pass",
+  "engineInfo": {
+    "name": "chrome_cli",
+    "degraded": true,
+    "degradedReasons": [
+      "playwright 未装"
+    ]
+  },
+  "input": {
+    "original": "D:\\EnterpriseSpirit\\back-end\\docs\\支付体系架构诊断与改造蓝图.html",
+    "resolvedPath": "D:\\EnterpriseSpirit\\back-end\\docs\\支付体系架构诊断与改造蓝图.html",
+    "baseUrl": "file:///D:/EnterpriseSpirit/back-end/docs/%E6%94%AF%E4%BB%98%E4%BD%93%E7%B3%BB%E6%9E%B6%E6%9E%84%E8%AF%8A%E6%96%AD%E4%B8%8E%E6%94%B9%E9%80%A0%E8%93%9D%E5%9B%BE.html",
+    "protocol": "file",
+    "cwd": "D:\\EnterpriseSpirit\\back-end\\docs",
+    "mediaMode": {
+      "reducedMotion": true
+    }
+  },
+  "artifacts": {
+    "screenshots": [
+      {
+        "viewport": "desktop",
+        "tiles": [
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p1of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p2of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p3of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p4of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p5of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p6of7.jpg",
+          "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\支付体系架构诊断与改造蓝图_desktop_p7of7.jpg"
+        ],
+        "visualCoverage": {
+          "complete": true,
+          "reason": null
+        }
+      }
+    ]
+  },
+  "summary": {
+    "blocker": 0,
+    "error": 0,
+    "warning": 0,
+    "info": 0
+  },
+  "findings": [],
+  "prioritizedActions": [],
+  "reportPath": "D:\\EnterpriseSpirit\\back-end\\docs\\_shots\\report.json"
+}

@@ -1,6 +1,8 @@
 ﻿import { Controller, Get, UseGuards, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
+import { RolesGuard } from '../../guards/roles.guard.js';
+import { Roles } from '../../decorators/roles.decorator.js';
 import * as os from 'os';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -107,7 +109,8 @@ async function sampleDiskIO() {
 
 @ApiTags('系统-管理员')
 @ApiBearerAuth()
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('admin')
 @Controller('admin/system')
 export class SystemController implements OnModuleInit, OnModuleDestroy {
   private cpuTimer: any;

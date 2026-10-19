@@ -11,11 +11,14 @@ import {
 import { Request } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuthGuard } from '../../guards/auth.guard.js';
+import { RolesGuard } from '../../guards/roles.guard.js';
+import { Roles } from '../../decorators/roles.decorator.js';
 import { WithdrawService } from './withdraw.service.js';
 
 @ApiTags('管理员-钱包')
 @ApiBearerAuth()
-@UseGuards(AuthGuard)
+@UseGuards(AuthGuard, RolesGuard)
+@Roles('admin')
 @Controller('admin/withdraw')
 export class AdminWithdrawController {
   constructor(private readonly svc: WithdrawService) {}
