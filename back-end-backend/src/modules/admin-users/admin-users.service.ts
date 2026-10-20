@@ -20,17 +20,15 @@ import {
 } from '../../../mysql/snowflake-id.js';
 import { BCRYPT_ROUNDS } from '../auth/password-policy.js';
 
-/** 角色白名单：超级管理员只能从这三个角色里选，避免乱挂角色。 */
-const ALLOWED_ROLE_KEYS = ['user', 'admin', 'super_admin'] as const;
-export type AllowedRoleKey = (typeof ALLOWED_ROLE_KEYS)[number];
-
-/** 校验传入的角色 key 均在白名单内，防止前端构造非法角色。 */
-function assertAllowedRoleKeys(keys: string[]): asserts keys is AllowedRoleKey[] {
-  const invalid = keys.filter((k) => !ALLOWED_ROLE_KEYS.includes(k as AllowedRoleKey));
-  if (invalid.length) {
-    throw new BadRequestException(`非法角色 key: ${invalid.join(', ')}`);
-  }
-}
+/**
+ * 可分配给用户的角色 key。
+ *
+ * 角色由「角色管理」动态维护（roles 表）：除内置 user/admin/super_admin 外，
+ * 超级管理员可新增任意自定义角色（如 finance、auditor）。因此这里不再维护
+ * 写死的白名单，角色 key 是否合法一律以数据库 roles 表为准（在 create /
+ * assignRoles 中按存在性校验），前端无法凭空构造一个不存在的角色。
+ */
+export type AllowedRoleKey = string;
 
 /** 可被管理员设置的账号状态。 */
 export type AdminSetStatus = 'active' | 'inactive' | 'banned';
@@ -173,12 +171,15 @@ export class AdminUsersService {
     if (input.password.length < 8 || input.password.length > 72) {
       throw new BadRequestException('密码长度需在 8-72 位之间');
     }
-    const roleKeys = (input.roleKeys ?? ['user']).filter((k) => typeof k === 'string' && k.length > 0);
-    assertAllowedRoleKeys(roleKeys);
-    const roleEntities = await this.roles.findBy(
-      roleKeys.length ? roleKeys.map((key) => ({ key })) : { key: 'user' },
-    );
-    if (!roleEntities.length) throw new BadRequestException('角色配置缺失');
+    const roleKeys = (input.roleKeys ?? ['user'])
+      .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+      .map((k) => k.trim());
+    // 未显式指定角色时授予默认角色 user。
+    const wantedKeys = roleKeys.length ? roleKeys : ['user'];
+    const roleEntities = await this.roles.findBy(wantedKeys.map((key) => ({ key })));
+    if (roleEntities.length !== wantedKeys.length) {
+      throw new BadRequestException('指定的角色不存在');
+    }
 
     const userId = await this.snowflake.nextId();
     try {
@@ -245,16 +246,18 @@ export class AdminUsersService {
     if (targetUserId === operatorId) {
       throw new BadRequestException('不能修改自己的角色，避免误操作丢失权限');
     }
-    const cleanKeys = (roleKeys ?? []).filter((k) => typeof k === 'string' && k.length > 0);
+    const cleanKeys = (roleKeys ?? [])
+      .filter((k): k is string => typeof k === 'string' && k.trim().length > 0)
+      .map((k) => k.trim());
     if (!cleanKeys.length) {
       throw new BadRequestException('至少要分配一个角色');
     }
-    assertAllowedRoleKeys(cleanKeys);
     const target = await this.users.findOne({
       where: { userId: targetUserId },
       relations: { roles: true },
     });
     if (!target) throw new NotFoundException('用户不存在');
+    // 角色合法性以 roles 表为准：角色管理中新增的自定义角色同样可分配。
     const newRoles = await this.roles.findBy(cleanKeys.map((key) => ({ key })));
     if (newRoles.length !== cleanKeys.length) {
       throw new BadRequestException('指定的角色不存在');

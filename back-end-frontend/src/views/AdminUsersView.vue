@@ -221,7 +221,6 @@ import {
   getAdminOptions,
   type AdminUser,
   type AdminOptions,
-  type RoleKey,
   type UserStatus,
 } from '@/api/modules/admin-users'
 import { useAuthStore } from '@/stores/auth'
@@ -233,7 +232,7 @@ const items = ref<AdminUser[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
-const query = reactive<{ keyword: string; status: UserStatus | ''; role: RoleKey | '' }>({
+const query = reactive<{ keyword: string; status: UserStatus | ''; role: string }>({
   keyword: '',
   status: '',
   role: '',
@@ -298,7 +297,7 @@ const createForm = reactive({
   password: '',
   email: '',
   nickname: '',
-  roleKeys: ['user'] as RoleKey[],
+  roleKeys: ['user'] as string[],
 })
 function openCreate() {
   createForm.username = ''

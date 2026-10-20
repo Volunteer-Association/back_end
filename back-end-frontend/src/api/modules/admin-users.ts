@@ -43,7 +43,8 @@ export function listAdminUsers(params: {
   pageSize?: number
   keyword?: string
   status?: UserStatus
-  role?: RoleKey
+  // 角色 key 为动态值（含角色管理中新增的自定义角色），不写死枚举
+  role?: string
 }) {
   return request.get<AdminUserPage>('/admin/users', { params })
 }
@@ -54,7 +55,8 @@ export function createAdminUser(input: {
   email: string
   nickname?: string
   status?: UserStatus
-  roleKeys?: RoleKey[]
+  // 角色 key 为动态值（含角色管理中新增的自定义角色），不写死枚举
+  roleKeys?: string[]
 }) {
   return request.post<AdminUser>('/admin/users', input)
 }

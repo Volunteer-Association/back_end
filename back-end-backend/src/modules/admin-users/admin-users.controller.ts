@@ -44,6 +44,7 @@ class CreateUserDto {
 
   @IsOptional()
   @IsArray()
+  @IsString({ each: true })
   roleKeys?: AllowedRoleKey[];
 }
 
@@ -54,6 +55,7 @@ class SetStatusDto {
 
 class AssignRolesDto {
   @IsArray()
+  @IsString({ each: true })
   roleKeys!: AllowedRoleKey[];
 }
 
@@ -93,7 +95,11 @@ export class AdminUsersController {
   @ApiQuery({ name: 'pageSize', required: false })
   @ApiQuery({ name: 'keyword', required: false })
   @ApiQuery({ name: 'status', required: false, enum: ['active', 'inactive', 'banned'] })
-  @ApiQuery({ name: 'role', required: false, enum: ['user', 'admin', 'super_admin'] })
+  @ApiQuery({
+    name: 'role',
+    required: false,
+    description: '按角色 key 过滤；可选值见 GET /admin/users/roles/list（含自定义角色）',
+  })
   list(
     @Req() req: Request & { user?: { sub: string; role: string } },
     @Query('page') page?: string,
